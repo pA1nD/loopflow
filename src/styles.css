@@ -313,6 +313,21 @@ select {
   border-radius: 6px;
 }
 
+.inspector-title {
+  font-size: 15px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.inspector-title:hover,
+.inspector-title:focus {
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
 .inspector-header {
   display: flex;
   align-items: center;
@@ -406,11 +421,12 @@ select {
 }
 
 .run-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border-radius: 4px;
   background: var(--paper);
   border: 1px solid var(--line);
@@ -480,12 +496,14 @@ select {
   gap: 4px;
 }
 
-/* Flow summary row — the "outer" card in the drill-down list. */
+/* ---- flow rows (two-line layout so titles never get truncated) ---- */
+
 .flow-item {
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .flow-item.open {
   border-color: var(--line-strong);
@@ -495,43 +513,55 @@ select {
 .flow-head {
   width: 100%;
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto;
-  gap: 8px;
-  padding: 7px 10px;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'dot title caret'
+    'meta meta meta';
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 10px 12px;
   text-align: left;
-  font-size: 12px;
   align-items: center;
 }
 .flow-head:hover {
   background: var(--hover);
 }
 
-.flow-root {
+.flow-head .run-dot {
+  grid-area: dot;
+}
+
+.flow-title {
+  grid-area: title;
   color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
 }
 
-.flow-count,
-.flow-dur,
-.flow-time {
+.flow-caret {
+  grid-area: caret;
   color: var(--muted);
   font-size: 11px;
 }
 
-.flow-caret {
+.flow-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
+  padding-left: 14px; /* align under title, past the dot */
 }
 
-/* Step rows shown inside an open flow. Slightly indented + no outer border
-   to visually belong to the parent flow. */
+/* Step rows inside an open flow — two lines, indented from the flow edge. */
 .flow-steps {
   list-style: none;
   margin: 0;
-  padding: 2px 6px 8px 12px;
+  padding: 2px 6px 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -539,7 +569,7 @@ select {
 }
 
 .step-item {
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
 }
 .step-item.open {
@@ -549,49 +579,70 @@ select {
 .step-head {
   width: 100%;
   display: grid;
-  grid-template-columns: auto auto auto 1fr auto auto;
-  gap: 6px;
-  padding: 4px 6px;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas:
+    'idx dot title caret'
+    '. . meta meta';
+  column-gap: 6px;
+  row-gap: 1px;
+  padding: 6px 8px;
   text-align: left;
-  font-size: 11px;
   align-items: center;
 }
 .step-head:hover {
   background: var(--hover);
 }
 
-.step-index {
+.step-head .step-index {
+  grid-area: idx;
   color: var(--muted);
   font-size: 10px;
   width: 14px;
   text-align: center;
 }
 
-.step-kind {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+.step-head .run-dot {
+  grid-area: dot;
 }
 
-.step-card {
+.step-title {
+  grid-area: title;
   color: var(--fg);
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.step-dur,
-.step-time {
+.step-caret {
+  grid-area: caret;
   color: var(--muted);
   font-size: 10px;
 }
 
+.step-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.step-meta > :first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dot-sep {
+  color: var(--line-strong);
+}
+
 .step-details {
-  padding: 6px 8px 10px 26px;
+  padding: 8px 10px 12px 28px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .runs-detail-row {
@@ -896,10 +947,12 @@ select {
 .card-summary {
   font-size: 11px;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   padding: 0 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
 }
 
 .card-header {

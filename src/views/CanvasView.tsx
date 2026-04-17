@@ -7,8 +7,8 @@ interface Props {
   state: AppState;
 }
 
-const CARD_W = 180;
-const CARD_H = 88;
+const CARD_W = 220;
+const CARD_H = 92;
 const GRID = 24;
 const GAP = 48;
 const ROW_GAP = 24;

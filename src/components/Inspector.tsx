@@ -3,6 +3,7 @@ import { actions as storeActions } from '../lib/store';
 import { runFromCard } from '../lib/runtime';
 import { getAction, type ParamDef } from '../lib/actions';
 import { RUNS_MODEL_NAME } from '../lib/store';
+import { formatMs, formatRelative, formatLocalDateTime } from '../lib/format';
 import type { AppState, Card, Datamodel } from '../lib/types';
 
 interface Props {
@@ -31,6 +32,16 @@ export function Inspector({ state }: Props) {
           ×
         </button>
       </div>
+
+      <input
+        className="inspector-title"
+        value={card.title}
+        placeholder="untitled"
+        onChange={(e) =>
+          storeActions.updateCard(canvas.id, card.id, { title: e.target.value })
+        }
+        data-testid="inspector-title"
+      />
 
       {action?.description && <p className="inspector-desc">{action.description}</p>}
 
@@ -116,7 +127,7 @@ function ParamRow({ param, value, datamodels, onChange }: ParamRowProps) {
       <label className="inspector-field">
         <span>{label}</span>
         <textarea
-          rows={3}
+          rows={4}
           value={typeof current === 'string' ? current : ''}
           placeholder={param.placeholder}
           onChange={(e) => onChange(e.target.value)}
@@ -147,7 +158,6 @@ function ParamRow({ param, value, datamodels, onChange }: ParamRowProps) {
     );
   }
 
-  // default: string
   return (
     <label className="inspector-field">
       <span>{label}</span>
@@ -163,40 +173,38 @@ function ParamRow({ param, value, datamodels, onChange }: ParamRowProps) {
 }
 
 function RecentRuns({ state, card }: { state: AppState; card: Card }) {
-  const cardRuns = useMemo(() => {
-    const runs = state.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
-    if (!runs) return [];
-    const cardIdField = runs.fields.find((f) => f.name === 'cardId');
-    if (!cardIdField) return [];
-    return runs.rows
-      .filter((r) => r[cardIdField.id] === card.id)
+  const runs = useMemo(() => {
+    const model = state.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
+    if (!model) return [] as Array<{ startedAt: string; durationMs: number; status: string }>;
+    const byName = Object.fromEntries(model.fields.map((f) => [f.name, f.id]));
+    return model.rows
+      .filter((r) => r[byName.cardId] === card.id)
       .slice(-5)
-      .reverse();
+      .reverse()
+      .map((r) => ({
+        startedAt: String(r[byName.startedAt] ?? ''),
+        durationMs: Number(r[byName.durationMs] ?? 0),
+        status: String(r[byName.status] ?? ''),
+      }));
   }, [state.datamodels, card.id]);
-
-  const runsModel = state.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
-  const fieldId = (name: string) => runsModel?.fields.find((f) => f.name === name)?.id ?? name;
 
   return (
     <div className="inspector-runs" data-testid="inspector-runs">
       <div className="inspector-label">recent runs</div>
-      {cardRuns.length === 0 ? (
+      {runs.length === 0 ? (
         <div className="inspector-empty">no runs yet</div>
       ) : (
         <ul>
-          {cardRuns.map((r, i) => {
-            const status = String(r[fieldId('status')] ?? '');
-            const duration = Number(r[fieldId('durationMs')] ?? 0);
-            const startedAt = String(r[fieldId('startedAt')] ?? '');
-            return (
-              <li key={i} className={`run-item run-${status}`} data-testid={`run-item-${i}`}>
-                <span className={`run-dot ${status}`} />
-                <span className="run-time">{startedAt.slice(11, 19)}</span>
-                <span className="run-dur">{duration}ms</span>
-                <span className="run-status">{status}</span>
-              </li>
-            );
-          })}
+          {runs.map((r, i) => (
+            <li key={i} className={`run-item run-${r.status}`} data-testid={`run-item-${i}`}>
+              <span className={`run-dot ${r.status}`} />
+              <span className="run-time" title={formatLocalDateTime(r.startedAt)}>
+                {formatRelative(r.startedAt)}
+              </span>
+              <span className="run-dur">{formatMs(r.durationMs)}</span>
+              <span className="run-status">{r.status}</span>
+            </li>
+          ))}
         </ul>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { actions } from '../lib/store';
+import { pluralize } from '../lib/format';
 import type { AppState } from '../lib/types';
 
 interface Props {
@@ -45,7 +46,7 @@ function CanvasTitle({ state }: Props) {
         data-testid="canvas-name"
       />
       <span className="titlebar-meta" data-testid="canvas-meta">
-        {canvas.cards.length} cards · {canvas.edges.length} edges
+        {pluralize(canvas.cards.length, 'card')} · {pluralize(canvas.edges.length, 'edge')}
       </span>
     </>
   );
@@ -65,7 +66,7 @@ function DatastoreTitle({ state }: Props) {
         data-testid="datamodel-name"
       />
       <span className="titlebar-meta" data-testid="datamodel-meta">
-        {model.fields.length} fields · {model.rows.length} rows
+        {pluralize(model.fields.length, 'field')} · {pluralize(model.rows.length, 'row')}
       </span>
     </>
   );

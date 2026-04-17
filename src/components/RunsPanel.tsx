@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { actions as storeActions, RUNS_MODEL_NAME } from '../lib/store';
 import { getAction } from '../lib/actions';
+import {
+  formatMs,
+  formatLocalTime,
+  formatLocalDateTime,
+  formatRelative,
+  pluralize,
+} from '../lib/format';
 import type { AppState } from '../lib/types';
 
 interface Props {
@@ -21,11 +28,11 @@ interface Step {
 
 interface Flow {
   flowId: string;
-  steps: Step[]; // chronological
+  steps: Step[];
   startedAt: string;
   status: 'ok' | 'error' | 'unknown';
-  totalMs: number; // sum of step durations
-  spanMs: number; // wall-clock span from first start to last finish
+  totalMs: number;
+  spanMs: number;
   rootCardId: string;
 }
 
@@ -85,7 +92,6 @@ export function RunsPanel({ state }: Props) {
         rootCardId: first.cardId,
       });
     }
-    // Newest flow first.
     list.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     return list;
   }, [steps]);
@@ -146,7 +152,7 @@ export function RunsPanel({ state }: Props) {
       </div>
 
       <div className="runs-stats">
-        <span data-testid="runs-stat-total">{stats.total} flows</span>
+        <span data-testid="runs-stat-total">{pluralize(stats.total, 'flow')}</span>
         <span className="runs-stat-ok">{stats.ok} ok</span>
         <span className="runs-stat-err">{stats.err} err</span>
       </div>
@@ -164,7 +170,6 @@ export function RunsPanel({ state }: Props) {
         {filtered.map((flow) => {
           const open = openFlowId === flow.flowId;
           const root = cardById.get(flow.rootCardId);
-          const timeOnly = flow.startedAt.slice(11, 19);
           return (
             <li
               key={flow.flowId}
@@ -177,11 +182,19 @@ export function RunsPanel({ state }: Props) {
                 data-testid={`flow-head-${flow.flowId}`}
               >
                 <span className={`run-dot ${flow.status}`} />
-                <span className="flow-root">{root?.title ?? '(deleted)'}</span>
-                <span className="flow-count">{flow.steps.length} step{flow.steps.length === 1 ? '' : 's'}</span>
-                <span className="flow-dur">{formatMs(flow.spanMs || flow.totalMs)}</span>
-                <span className="flow-time">{timeOnly}</span>
+                <span className="flow-title" title={root?.title ?? ''}>
+                  {root?.title ?? '(deleted)'}
+                </span>
                 <span className="flow-caret">{open ? '▾' : '▸'}</span>
+                <span className="flow-meta">
+                  <span>{pluralize(flow.steps.length, 'step')}</span>
+                  <span className="dot-sep">·</span>
+                  <span>{formatMs(flow.spanMs || flow.totalMs)}</span>
+                  <span className="dot-sep">·</span>
+                  <span title={formatLocalDateTime(flow.startedAt)}>
+                    {formatRelative(flow.startedAt)}
+                  </span>
+                </span>
               </button>
               {open && (
                 <ol className="flow-steps" data-testid={`flow-steps-${flow.flowId}`}>
@@ -189,7 +202,6 @@ export function RunsPanel({ state }: Props) {
                     const stepOpen = openStepIndex === s.rowIndex;
                     const card = cardById.get(s.cardId);
                     const action = getAction(s.actionType);
-                    const tOnly = s.startedAt.slice(11, 19);
                     return (
                       <li
                         key={s.rowIndex}
@@ -202,16 +214,25 @@ export function RunsPanel({ state }: Props) {
                         >
                           <span className="step-index">{i + 1}</span>
                           <span className={`run-dot ${s.status}`} />
-                          <span className="step-kind">{action?.label ?? s.actionType}</span>
-                          <span className="step-card">{card?.title ?? '(deleted)'}</span>
-                          <span className="step-dur">{s.durationMs}ms</span>
-                          <span className="step-time">{tOnly}</span>
+                          <span className="step-title" title={card?.title ?? ''}>
+                            {card?.title ?? '(deleted)'}
+                          </span>
+                          <span className="step-caret">{stepOpen ? '▾' : '▸'}</span>
+                          <span className="step-meta">
+                            <span>{action?.label ?? s.actionType}</span>
+                            <span className="dot-sep">·</span>
+                            <span>{formatMs(s.durationMs)}</span>
+                            <span className="dot-sep">·</span>
+                            <span title={formatLocalDateTime(s.startedAt)}>
+                              {formatLocalTime(s.startedAt)}
+                            </span>
+                          </span>
                         </button>
                         {stepOpen && (
                           <div className="step-details" data-testid={`step-detail-${s.rowIndex}`}>
-                            <Detail label="started" value={`${s.startedAt.slice(0, 10)} ${tOnly}`} />
+                            <Detail label="started" value={formatLocalDateTime(s.startedAt)} />
                             <Detail label="status" value={s.status} />
-                            <Detail label="duration" value={`${s.durationMs} ms`} />
+                            <Detail label="duration" value={formatMs(s.durationMs)} />
                             {card && (
                               <Detail
                                 label="card"
@@ -260,11 +281,4 @@ function tryPretty(raw: string): string {
   } catch {
     return raw;
   }
-}
-
-function formatMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
