@@ -903,7 +903,8 @@ textarea::placeholder {
 /* ---------- terminal panel ---------- */
 
 .terminal-panel {
-  width: 520px;
+  /* width set inline by the component; resizable via the left handle */
+  position: relative;
   border-left: 1px solid var(--line);
   background: var(--bg);
   display: flex;
@@ -911,6 +912,23 @@ textarea::placeholder {
   min-height: 0;
   flex-shrink: 0;
   animation: panel-in 220ms var(--ease);
+}
+
+.terminal-resize {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.terminal-resize:hover,
+.terminal-resize:active {
+  background: var(--line-strong);
 }
 
 .terminal-panel-header {

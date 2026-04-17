@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -9,11 +9,17 @@ interface Props {
   state: AppState;
 }
 
+const MIN_W = 320;
+const MAX_W = 1400;
+
 export function TerminalPanel({ state }: Props) {
   const canvasId = state.activeCanvasId;
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  // Panel width — session-local; resets on restart. xterm refits via the
+  // ResizeObserver below when the host changes size.
+  const [width, setWidth] = useState<number>(520);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -92,8 +98,38 @@ export function TerminalPanel({ state }: Props) {
     };
   }, [canvasId]);
 
+  const onResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(MAX_W, Math.max(MIN_W, startW + (startX - ev.clientX)));
+      setWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   return (
-    <aside className="terminal-panel" data-testid="terminal-panel">
+    <aside
+      className="terminal-panel"
+      data-testid="terminal-panel"
+      style={{ width }}
+    >
+      <div
+        className="terminal-resize"
+        onMouseDown={onResizeStart}
+        title="drag to resize"
+        data-testid="terminal-resize"
+      />
       <div className="terminal-panel-header">
         <span className="inspector-label">terminal</span>
         <div className="terminal-panel-actions">
