@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from 'react';
 import { actions } from '../lib/store';
+import { isCardRunning, subscribeRuntime, getRuntimeVersion } from '../lib/runtime';
 import type { AppState } from '../lib/types';
 
 interface Props {
@@ -30,6 +32,10 @@ export function Sidebar({ state }: Props) {
 }
 
 function CanvasList({ state }: Props) {
+  // Re-render when the runtime's running set changes so the "running" tag
+  // appears and disappears without needing any store mutation.
+  useSyncExternalStore(subscribeRuntime, getRuntimeVersion, getRuntimeVersion);
+
   return (
     <div className="sidebar-section" data-testid="sidebar-canvas">
       <div className="sidebar-header">
@@ -45,17 +51,29 @@ function CanvasList({ state }: Props) {
       </div>
       <ul className="sidebar-list">
         {state.canvases.length === 0 && <li className="sidebar-empty">no canvases yet</li>}
-        {state.canvases.map((c) => (
-          <li
-            key={c.id}
-            className={`sidebar-item ${c.id === state.activeCanvasId ? 'active' : ''}`}
-            onClick={() => actions.selectCanvas(c.id)}
-            data-testid={`canvas-item-${c.id}`}
-          >
-            <span className="dot" />
-            <span className="sidebar-item-name">{c.name}</span>
-          </li>
-        ))}
+        {state.canvases.map((c) => {
+          const running = c.cards.some((card) => isCardRunning(card.id));
+          return (
+            <li
+              key={c.id}
+              className={`sidebar-item ${c.id === state.activeCanvasId ? 'active' : ''}`}
+              onClick={() => actions.selectCanvas(c.id)}
+              data-testid={`canvas-item-${c.id}`}
+            >
+              <span className="dot" />
+              <span className="sidebar-item-name">{c.name}</span>
+              {running && (
+                <span
+                  className="tag tag-running"
+                  title="a card on this canvas is running"
+                  data-testid={`canvas-running-${c.id}`}
+                >
+                  running
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -186,6 +186,31 @@ textarea::placeholder {
   box-shadow: var(--shadow-sm);
 }
 
+/* Draws attention to the terminal button while a card is executing so the
+   user knows there's live output to look at. */
+.titlebar-icon.running {
+  color: #3f7f3f;
+  border-color: rgba(79, 160, 79, 0.45);
+  background: rgba(79, 160, 79, 0.08);
+}
+.titlebar-icon.running:hover {
+  background: rgba(79, 160, 79, 0.15);
+  color: #2e6e2e;
+}
+
+.titlebar-running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4fa04f;
+  margin-left: 2px;
+  animation: titlebar-running-pulse 1.6s ease-in-out infinite;
+}
+@keyframes titlebar-running-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 160, 79, 0.45); }
+  50%      { box-shadow: 0 0 0 5px rgba(79, 160, 79, 0); }
+}
+
 .titlebar-name {
   font-size: 14px;
   padding: var(--sp-1) var(--sp-3);
@@ -364,6 +389,18 @@ textarea::placeholder {
   border: 1px solid var(--line-strong);
   border-radius: 4px;
   padding: 1px 4px;
+}
+
+.sidebar-item .tag-running {
+  color: #fff;
+  background: #4fa04f;
+  border-color: #4fa04f;
+  animation: tag-running-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tag-running-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 160, 79, 0.35); }
+  50%      { box-shadow: 0 0 0 4px rgba(79, 160, 79, 0); }
 }
 
 /* ---------- inspector ---------- */
