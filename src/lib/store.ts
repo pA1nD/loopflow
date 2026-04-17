@@ -133,10 +133,21 @@ export const actions = {
     commit({ ...state, view });
   },
   setSelectedCard(cardId: string | null) {
-    commit({ ...state, selectedCardId: cardId });
+    // Right side hosts at most one panel at a time — opening the inspector
+    // (by selecting a card) closes the runs panel.
+    commit({
+      ...state,
+      selectedCardId: cardId,
+      runsPanel: cardId ? false : state.runsPanel,
+    });
   },
   setRunsPanel(open: boolean) {
-    commit({ ...state, runsPanel: open });
+    commit({
+      ...state,
+      runsPanel: open,
+      // Same rule the other way: opening runs deselects the active card.
+      selectedCardId: open ? null : state.selectedCardId,
+    });
   },
 
   // Canvas

@@ -159,7 +159,7 @@ textarea::placeholder {
   flex: 1;
   display: flex;
   justify-content: flex-end;
-  padding-right: 16px;
+  padding-right: 0;
 }
 
 .titlebar-icon {
@@ -227,7 +227,7 @@ textarea::placeholder {
 /* ---------- sidebar ---------- */
 
 .sidebar {
-  width: 220px;
+  width: 250px;
   border-right: 1px solid var(--line);
   background: var(--bg);
   display: flex;
@@ -370,7 +370,7 @@ textarea::placeholder {
 
 .inspector,
 .runs-panel {
-  width: 300px;
+  width: 340px;
   border-left: 1px solid var(--line);
   background: var(--bg);
   display: flex;
@@ -380,6 +380,7 @@ textarea::placeholder {
   gap: var(--sp-4);
   overflow: auto;
   animation: panel-in 220ms var(--ease);
+  flex-shrink: 0;
 }
 
 @keyframes panel-in {
@@ -506,6 +507,10 @@ textarea::placeholder {
 .inspector-run {
   width: 100%;
   height: calc(var(--ctl-h) + 4px);
+  /* Inspector is a flex column; without this the button gets squished
+     when the panel content overflows. */
+  flex-shrink: 0;
+  min-height: calc(var(--ctl-h) + 4px);
   margin-top: var(--sp-1);
   border-radius: var(--r-md);
   font-weight: 500;
