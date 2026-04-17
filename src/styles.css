@@ -86,6 +86,36 @@ select {
   flex: 0 1 auto;
 }
 
+.titlebar-actions {
+  -webkit-app-region: no-drag;
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 16px;
+}
+
+.titlebar-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.titlebar-icon:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.titlebar-icon.active {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+
 .titlebar-name {
   font-size: 14px;
   padding: 4px 8px;
@@ -259,8 +289,9 @@ select {
 
 /* ---------- inspector ---------- */
 
-.inspector {
-  width: 280px;
+.inspector,
+.runs-panel {
+  width: 300px;
   border-left: 1px solid var(--line);
   background: var(--bg);
   display: flex;
@@ -269,6 +300,17 @@ select {
   padding: 12px 14px 16px;
   gap: 10px;
   overflow: auto;
+}
+
+.inspector-kind-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 
 .inspector-header {
@@ -405,6 +447,134 @@ select {
   font-size: 11px;
   color: var(--muted);
   padding: 4px 0;
+}
+
+/* ---- runs panel ---- */
+
+.runs-stats {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.runs-stat-ok { color: #3c7f3c; }
+.runs-stat-err { color: #c44; }
+
+.runs-filter {
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper);
+  font-size: 12px;
+}
+.runs-filter:focus {
+  border-color: var(--accent);
+}
+
+.runs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.runs-item {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.runs-item.open {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow);
+}
+
+.runs-item-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 11px;
+  align-items: center;
+}
+
+.runs-item-head:hover {
+  background: var(--hover);
+}
+
+.runs-item-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.runs-item-card {
+  font-size: 12px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runs-item-dur,
+.runs-item-time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.runs-item-details {
+  padding: 6px 10px 10px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.runs-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.runs-detail-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.runs-detail-value {
+  font-size: 12px;
+}
+
+.runs-detail-value pre {
+  font-family: inherit;
+  font-size: 11px;
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
 }
 
 /* ---------- main ---------- */
@@ -607,14 +777,42 @@ select {
   box-shadow: 0 0 0 2px rgba(28, 28, 30, 0.08), var(--shadow);
 }
 
+/* ---- per-kind shapes ---- */
+
+/* Trigger: pill shape — clearly a starting point. */
 .card-category-trigger {
-  border-left: 3px solid #d4a017;
+  border-radius: 44px;
+  background: #fffaed;
+  border-color: #e7c97a;
 }
+.card-category-trigger .card-port-in {
+  /* Triggers don't accept input — hide the left port. */
+  display: none;
+}
+
+/* LLM / action: classic rounded rectangle, default. */
 .card-category-action {
-  border-left: 3px solid #356ac3;
+  border-radius: 12px;
+  background: #f8fafc;
+  border-color: #b9c7dc;
 }
+
+/* Sink: boxy with a subtle top "lid" stripe that suggests a database / table. */
 .card-category-sink {
-  border-left: 3px solid #3c7f3c;
+  border-radius: 4px;
+  background: #f3f9f3;
+  border-color: #a3c9a3;
+}
+.card-category-sink::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 12px;
+  right: 12px;
+  height: 4px;
+  border-top: 1px solid #a3c9a3;
+  border-bottom: 1px solid #a3c9a3;
+  pointer-events: none;
 }
 
 .card-kind-label {

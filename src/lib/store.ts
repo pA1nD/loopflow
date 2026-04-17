@@ -20,6 +20,7 @@ function emptyState(): AppState {
     activeDatamodelId: null,
     view: 'canvas',
     selectedCardId: null,
+    runsPanel: false,
   };
 }
 
@@ -120,6 +121,9 @@ export const actions = {
   },
   setSelectedCard(cardId: string | null) {
     commit({ ...state, selectedCardId: cardId });
+  },
+  setRunsPanel(open: boolean) {
+    commit({ ...state, runsPanel: open });
   },
 
   // Canvas

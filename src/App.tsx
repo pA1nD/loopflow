@@ -16,6 +16,7 @@ import {
 import { Sidebar } from './components/Sidebar';
 import { Titlebar } from './components/Titlebar';
 import { Inspector } from './components/Inspector';
+import { RunsPanel } from './components/RunsPanel';
 import { CanvasView } from './views/CanvasView';
 import { DatastoreView } from './views/DatastoreView';
 import { seedLast30DaysExample } from './lib/examples';
@@ -69,6 +70,7 @@ export function App() {
           {state.view === 'canvas' ? <CanvasView state={state} /> : <DatastoreView state={state} />}
         </main>
         {state.view === 'canvas' && state.selectedCardId && <Inspector state={state} />}
+        {state.runsPanel && <RunsPanel state={state} />}
       </div>
     </div>
   );

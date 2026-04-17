@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { actions as storeActions } from '../lib/store';
 import { runFromCard } from '../lib/runtime';
-import { allActionTypes, getAction, type ParamDef } from '../lib/actions';
+import { getAction, type ParamDef } from '../lib/actions';
 import { RUNS_MODEL_NAME } from '../lib/store';
 import type { AppState, Card, Datamodel } from '../lib/types';
 
@@ -19,7 +19,9 @@ export function Inspector({ state }: Props) {
   return (
     <aside className="inspector" data-testid="inspector">
       <div className="inspector-header">
-        <span className="inspector-label">action</span>
+        <span className="inspector-kind-badge" data-testid="inspector-kind">
+          {action?.label ?? card.kind}
+        </span>
         <button
           className="icon-btn"
           title="close"
@@ -29,21 +31,6 @@ export function Inspector({ state }: Props) {
           ×
         </button>
       </div>
-
-      <select
-        className="inspector-kind"
-        value={card.kind}
-        onChange={(e) =>
-          storeActions.updateCard(canvas.id, card.id, { kind: e.target.value, params: {} })
-        }
-        data-testid="inspector-kind"
-      >
-        {allActionTypes.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.label}
-          </option>
-        ))}
-      </select>
 
       {action?.description && <p className="inspector-desc">{action.description}</p>}
 

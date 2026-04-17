@@ -60,7 +60,7 @@ test('create a canvas and connect two cards on it', async () => {
   await expect(page.getByTestId('canvas-name')).toHaveValue('untitled flow');
 
   // Add the first card.
-  await page.getByTestId('add-card').click();
+  await page.getByTestId('add-llm').click();
   const firstCardCount = await page.locator('[data-card-id]').count();
   expect(firstCardCount).toBe(1);
   const firstCardId = await page
@@ -70,7 +70,7 @@ test('create a canvas and connect two cards on it', async () => {
   expect(firstCardId).toBeTruthy();
 
   // Add the second card.
-  await page.getByTestId('add-card').click();
+  await page.getByTestId('add-llm').click();
   await expect(page.locator('[data-card-id]')).toHaveCount(2);
   const secondCardId = await page
     .locator('[data-card-id]')
@@ -109,7 +109,7 @@ test('create a canvas and connect two cards on it', async () => {
   });
 
   // Add a third card and connect card 2 -> card 3 to demonstrate "and so on".
-  await page.getByTestId('add-card').click();
+  await page.getByTestId('add-llm').click();
   const thirdCardId = await page
     .locator('[data-card-id]')
     .nth(2)
@@ -140,7 +140,7 @@ test('repeatedly adding cards lays them out without overlapping', async () => {
   await page.getByTestId('create-first-canvas').click();
   // Five cards is enough to force the layout to advance at least two columns.
   for (let i = 0; i < 5; i++) {
-    await page.getByTestId('add-card').click();
+    await page.getByTestId('add-llm').click();
   }
   await expect(page.locator('[data-card-id]')).toHaveCount(5);
 
@@ -150,7 +150,7 @@ test('repeatedly adding cards lays them out without overlapping', async () => {
   expect(cards).toHaveLength(5);
 
   const CARD_W = 180;
-  const CARD_H = 76;
+  const CARD_H = 88;
   for (let i = 0; i < cards.length; i++) {
     for (let j = i + 1; j < cards.length; j++) {
       const a = cards[i];
@@ -172,7 +172,7 @@ test('repeatedly adding cards lays them out without overlapping', async () => {
 
 test('dragging from a port to empty canvas spawns a new connected card', async () => {
   await page.getByTestId('create-first-canvas').click();
-  await page.getByTestId('add-card').click();
+  await page.getByTestId('add-llm').click();
   const firstCardId = await page
     .locator('[data-card-id]')
     .first()
@@ -204,7 +204,7 @@ test('dragging from a port to empty canvas spawns a new connected card', async (
 
 test('card positions snap to the 24px grid while dragging', async () => {
   await page.getByTestId('create-first-canvas').click();
-  await page.getByTestId('add-card').click();
+  await page.getByTestId('add-llm').click();
   const cardId = await page
     .locator('[data-card-id]')
     .first()
@@ -355,9 +355,9 @@ async function buildResearchLoop(
   const enabled = page.getByTestId('param-enabled');
   if (!(await enabled.isChecked())) await enabled.check();
 
-  // Place the LLM action via the + card button (default kind is 'llm').
-  await page.getByTestId('add-card').click();
-  await expect(page.getByTestId('inspector-kind')).toHaveValue('llm');
+  // Place the LLM action via the toolbar's dedicated + llm button.
+  await page.getByTestId('add-llm').click();
+  await expect(page.getByTestId('inspector-kind')).toHaveText('llm');
   await page.getByTestId('param-prompt').fill(
     `Research "${topic}" using the last30days skill.`,
   );

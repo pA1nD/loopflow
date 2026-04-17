@@ -55,4 +55,7 @@ export interface AppState {
   activeDatamodelId: string | null;
   view: 'canvas' | 'datastore';
   selectedCardId: string | null;
+  // Right-side Runs panel toggle. Mutually exclusive with the inspector
+  // only when a card is also selected — both can be open together.
+  runsPanel: boolean;
 }

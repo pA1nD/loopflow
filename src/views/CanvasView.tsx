@@ -247,19 +247,6 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
       <nav className="canvas-toolbar" data-testid="canvas-toolbar">
         <button
           className="toolbar-btn"
-          onClick={() => addCardOfKind('llm')}
-          data-testid="add-card"
-          title="add card"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="4" y="5" width="16" height="14" rx="2" />
-            <line x1="8" y1="10" x2="16" y2="10" />
-            <line x1="8" y1="14" x2="14" y2="14" />
-          </svg>
-          <span>card</span>
-        </button>
-        <button
-          className="toolbar-btn"
           onClick={() =>
             addCardOfKind('interval-trigger', { intervalSeconds: 3600, enabled: false })
           }
@@ -271,6 +258,31 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
             <polyline points="12 7 12 12 15 14" />
           </svg>
           <span>trigger</span>
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={() => addCardOfKind('llm')}
+          data-testid="add-llm"
+          title="add llm action"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M7 8h10" /><path d="M7 12h10" /><path d="M7 16h6" />
+            <rect x="3" y="4" width="18" height="16" rx="3" />
+          </svg>
+          <span>llm</span>
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={() => addCardOfKind('datastore-append')}
+          data-testid="add-sink"
+          title="add datastore sink"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <ellipse cx="12" cy="5" rx="8" ry="2.5" />
+            <path d="M4 5v14c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5" />
+            <path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" />
+          </svg>
+          <span>sink</span>
         </button>
       </nav>
       <div
