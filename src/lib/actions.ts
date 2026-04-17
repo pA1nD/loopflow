@@ -52,74 +52,68 @@ export interface ActionType {
 }
 
 // ------------------------------------------------------------------
-// LLM bridge — real vs mock
+// LLM bridge — always real. Talks to the main process which spawns
+// `claude -p --output-format=json --json-schema <schema>`.
 // ------------------------------------------------------------------
 
 interface LlmRequest {
   prompt: string;
   skill?: string;
   envVars?: Record<string, string>;
+  schema?: string;
 }
 
 interface LlmResponse {
-  // Raw text response from the model (may be JSON).
   text: string;
-  // If the response was structured, the parsed object. Convenience only.
   parsed?: unknown;
+  meta?: { durationMs?: number; sessionId?: string; costUsd?: number };
 }
 
 declare global {
   interface Window {
     loopflow?: {
       llm?: (req: LlmRequest) => Promise<LlmResponse>;
-      env?: { mockLLM?: boolean; headless?: boolean };
+      env?: { headless?: boolean };
     };
   }
 }
 
+// The default schema is suitable for research-style outputs (findings with
+// a source and score). Users can override via the `schema` param on the
+// llm action — anything valid for `--json-schema`.
+const DEFAULT_LLM_SCHEMA = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string' },
+          finding: { type: 'string' },
+          source: { type: 'string' },
+          score: { type: 'number', minimum: 0, maximum: 1 },
+        },
+        required: ['topic', 'finding', 'source', 'score'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['findings'],
+  additionalProperties: false,
+} as const;
+
 async function invokeLlm(req: LlmRequest): Promise<LlmResponse> {
-  const bridge = typeof window !== 'undefined' ? window.loopflow : undefined;
-  const mockForced = Boolean(bridge?.env?.mockLLM);
-  if (bridge?.llm && !mockForced) {
-    try {
-      return await bridge.llm(req);
-    } catch (e) {
-      // Fall through to mock so the loop stays usable offline / in tests.
-      console.warn('llm bridge failed, using mock:', e);
-    }
+  const bridge = typeof window !== 'undefined' ? window.loopflow?.llm : undefined;
+  if (!bridge) {
+    throw new Error(
+      'llm bridge unavailable — the app must be launched via Electron ' +
+        '(npm run dev or a built binary) so the preload can expose claude -p',
+    );
   }
-  return mockLlm(req);
-}
-
-// Deterministic fixture the whole app relies on when the real LLM bridge is
-// not wired up or the app is launched with LOOPFLOW_MOCK_LLM=1. Generates
-// output keyed on the skill so skill="last30days" still feels like the
-// real thing (topic, findings, sources, scores).
-function mockLlm({ prompt, skill }: LlmRequest): LlmResponse {
-  const topic = extractTopic(prompt) || 'general';
-  if (skill === 'last30days' || /last\s*30\s*days/i.test(prompt)) {
-    const findings = [
-      { topic, finding: `${topic} hot take from r/programming`, source: 'reddit', score: 0.92 },
-      { topic, finding: `${topic} discussion thread on x.com`, source: 'x', score: 0.81 },
-      { topic, finding: `${topic} top HN comment`, source: 'hn', score: 0.74 },
-    ];
-    const parsed = { topic, findings };
-    return { text: JSON.stringify(parsed), parsed };
-  }
-  // Fallback: a single-row echo so the pipeline still produces something.
-  const parsed = { rows: [{ prompt, response: `mock response for: ${prompt || '(empty)'}` }] };
-  return { text: JSON.stringify(parsed), parsed };
-}
-
-function extractTopic(prompt: string): string | null {
-  if (!prompt) return null;
-  const m =
-    prompt.match(/topic\s*[:=]\s*"?([^"\n]+?)"?(?:\n|$)/i) ??
-    // Any double-quoted segment — matches prompts like `Research "react 19"`
-    prompt.match(/"([^"\n]{1,64})"/) ??
-    prompt.match(/about\s+"?([^"\n.]+?)"?(?:\n|$|\.)/i) ??
-    prompt.match(/on\s+"?([^"\n.]+?)"?(?:\n|$|\.)/i);
-  return m?.[1]?.trim() ?? null;
+  return await bridge(req);
 }
 
 function parseEnvVars(raw: string | undefined): Record<string, string> {
@@ -176,27 +170,35 @@ const llm: ActionType = {
   label: 'llm',
   category: 'action',
   description:
-    'Ask an LLM for structured data, then append it to a datamodel (selected or auto-created).',
+    'Wraps `claude -p` with a JSON schema and appends the structured output to a datamodel (selected or auto-created).',
   params: [
     {
       name: 'prompt',
       type: 'text',
       label: 'prompt',
       placeholder:
-        'e.g. Research "react 19" using the last30days skill and return { findings: [...] } JSON.',
+        'e.g. Research "react 19" using the last30days skill — return 3 concrete findings.',
     },
     {
       name: 'skill',
       type: 'string',
       label: 'skill',
       placeholder: 'last30days',
-      help: 'Optional skill identifier to pass through to the runner.',
+      help: 'Optional skill identifier. Appended to the prompt as a hint.',
     },
     {
       name: 'envVars',
       type: 'text',
       label: 'env vars',
       placeholder: 'ANTHROPIC_API_KEY=...\nREDDIT_CLIENT_ID=...',
+      help: 'Passed to the claude subprocess, one KEY=value per line.',
+    },
+    {
+      name: 'schema',
+      type: 'text',
+      label: 'json schema',
+      default: JSON.stringify(DEFAULT_LLM_SCHEMA, null, 2),
+      help: 'Forwarded to --json-schema so claude enforces the output shape.',
     },
     {
       name: 'datamodelId',
@@ -223,9 +225,12 @@ const llm: ActionType = {
       })();
     const skill = (ctx.params.skill as string | undefined) || undefined;
     const envVars = parseEnvVars(ctx.params.envVars as string | undefined);
+    const schema =
+      (ctx.params.schema as string | undefined)?.trim() ||
+      JSON.stringify(DEFAULT_LLM_SCHEMA);
 
-    ctx.log(`llm: calling with skill="${skill ?? ''}" envKeys=[${Object.keys(envVars).join(',')}]`);
-    const response = await invokeLlm({ prompt, skill, envVars });
+    ctx.log(`llm: calling claude -p skill="${skill ?? ''}" envKeys=[${Object.keys(envVars).join(',')}]`);
+    const response = await invokeLlm({ prompt, skill, envVars, schema });
 
     let parsed = response.parsed;
     if (parsed === undefined) {

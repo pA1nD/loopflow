@@ -1,13 +1,15 @@
-// Exposes a narrow, privileged surface to the renderer. Kept intentionally
-// small — the action kernel only has whatever is bridged here.
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-const env = {
-  mockLLM: process.env.LOOPFLOW_MOCK_LLM === '1',
-  headless: process.env.LOOPFLOW_HEADLESS === '1',
-};
+interface LlmRequest {
+  prompt: string;
+  skill?: string;
+  envVars?: Record<string, string>;
+  schema?: string;
+}
 
 contextBridge.exposeInMainWorld('loopflow', {
-  env,
-  // llm: wired in a later increment (real Anthropic SDK via ipcRenderer.invoke).
+  env: {
+    headless: process.env.LOOPFLOW_HEADLESS === '1',
+  },
+  llm: (req: LlmRequest) => ipcRenderer.invoke('llm:call', req),
 });

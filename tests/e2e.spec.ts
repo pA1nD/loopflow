@@ -14,15 +14,18 @@ test.beforeEach(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      // Keeps the Electron window offscreen + never focused so running the
-      // suite doesn't interrupt whatever the user is doing.
       LOOPFLOW_HEADLESS: '1',
-      // Force the LLM action to return a deterministic fixture so tests
-      // never need real API credentials.
-      LOOPFLOW_MOCK_LLM: '1',
     },
   });
+  // Surface main-process logs (claude subprocess errors land here).
+  app.process().stdout?.on('data', (d) => process.stdout.write(`[electron-main] ${d}`));
+  app.process().stderr?.on('data', (d) => process.stderr.write(`[electron-main:err] ${d}`));
   page = await app.firstWindow();
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' || msg.type() === 'warning') {
+      process.stderr.write(`[renderer:${msg.type()}] ${msg.text()}\n`);
+    }
+  });
   await page.waitForSelector('[data-testid="titlebar"]');
   // Reset persisted state via the in-app test hook so each test starts clean.
   await page.evaluate(() => window.__loopflow?.reset());
@@ -343,7 +346,9 @@ async function buildResearchLoop(
     `Research "${topic}" using the last30days skill.`,
   );
   await page.getByTestId('param-skill').fill('last30days');
-  await page.getByTestId('param-envVars').fill('ANTHROPIC_API_KEY=sk-test\nOTHER=1');
+  // Use non-auth env vars in the test so we don't clobber the user's
+  // real ANTHROPIC_API_KEY / OAuth session that claude -p needs.
+  await page.getByTestId('param-envVars').fill('LOOPFLOW_TEST=1\nFOO=bar');
   await page.getByTestId('param-datamodelName').fill(datamodelName);
   if (opts.precreateDatamodel) {
     const stateAfterCreate = await page.evaluate(() => window.__loopflow?.getState());
@@ -400,7 +405,7 @@ test('orchestration flow: build a trigger -> llm(last30days) pipeline from scrat
   // LLM params — prompt, skill, and a parsed envVars blob.
   expect(canvas.cards[1].params.prompt).toContain('react 19');
   expect(canvas.cards[1].params.skill).toBe('last30days');
-  expect(canvas.cards[1].params.envVars).toContain('ANTHROPIC_API_KEY=');
+  expect(canvas.cards[1].params.envVars).toContain('LOOPFLOW_TEST=');
 
   // Datamodel preselected (test was opts.precreateDatamodel=true).
   const findings = state.datamodels.find((m: { name: string }) => m.name === 'findings');
@@ -416,7 +421,8 @@ test('orchestration flow: build a trigger -> llm(last30days) pipeline from scrat
 });
 
 test('orchestration flow: run it — llm writes rows into the target datamodel', async () => {
-  await buildResearchLoop('tailwind 4', 'findings', { precreateDatamodel: true });
+  test.setTimeout(90_000); // real claude -p invocations take ~15-30s
+  await buildResearchLoop('react 19', 'findings', { precreateDatamodel: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state0 = (await page.evaluate(() => window.__loopflow?.getState())) as any;
@@ -432,9 +438,9 @@ test('orchestration flow: run it — llm writes rows into the target datamodel',
         const s = (await page.evaluate(() => window.__loopflow?.getState())) as any;
         return s.datamodels.find((m: { name: string }) => m.name === 'findings').rows.length;
       },
-      { timeout: 5000 },
+      { timeout: 60_000, intervals: [500, 1000, 2000] },
     )
-    .toBe(3);
+    .toBeGreaterThanOrEqual(2);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = (await page.evaluate(() => window.__loopflow?.getState())) as any;
@@ -443,19 +449,22 @@ test('orchestration flow: run it — llm writes rows into the target datamodel',
     (m: { name: string; isSystem?: boolean }) => m.isSystem && m.name === 'runs',
   );
 
-  // Every row has the expected shape — topic stable, score numeric, etc.
+  // Every row has the expected structural shape. Content is whatever the
+  // real model produced — we only assert types and presence.
   const fieldsByName = Object.fromEntries(
     findings.fields.map((f: { id: string; name: string }) => [f.name, f.id]),
   );
   for (const row of findings.rows) {
-    expect(row[fieldsByName.topic]).toBe('tailwind 4');
+    expect(typeof row[fieldsByName.topic]).toBe('string');
+    expect(String(row[fieldsByName.topic]).length).toBeGreaterThan(0);
     expect(typeof row[fieldsByName.finding]).toBe('string');
-    expect(['reddit', 'x', 'hn']).toContain(row[fieldsByName.source]);
+    expect(String(row[fieldsByName.finding]).length).toBeGreaterThan(0);
+    expect(typeof row[fieldsByName.source]).toBe('string');
     expect(typeof row[fieldsByName.score]).toBe('number');
   }
 
   // Two cards in the pipeline, so two run records (trigger + llm).
-  expect(runs.rows.length).toBe(2);
+  expect(runs.rows.length).toBeGreaterThanOrEqual(2);
   const statusFieldId = runs.fields.find((f: { name: string }) => f.name === 'status').id;
   for (const r of runs.rows) expect(r[statusFieldId]).toBe('ok');
 
@@ -464,11 +473,10 @@ test('orchestration flow: run it — llm writes rows into the target datamodel',
   await page.getByTestId(`datamodel-item-${findings.id}`).click();
   await expect(page.getByTestId('data-table')).toBeVisible();
   await expect(page.getByTestId('row-0')).toBeVisible();
-  await expect(page.getByTestId('row-2')).toBeVisible();
 });
 
 test('orchestration flow: llm action auto-creates a datamodel when none is selected', async () => {
-  // No preexisting datamodel this time — the LLM action must create one.
+  test.setTimeout(90_000);
   await buildResearchLoop('bun 2', 'auto findings', { precreateDatamodel: false });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -487,14 +495,13 @@ test('orchestration flow: llm action auto-creates a datamodel when none is selec
         const m = s.datamodels.find((x: any) => x.name === 'auto findings');
         return m?.rows.length ?? 0;
       },
-      { timeout: 5000 },
+      { timeout: 60_000, intervals: [500, 1000, 2000] },
     )
-    .toBe(3);
+    .toBeGreaterThanOrEqual(2);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = (await page.evaluate(() => window.__loopflow?.getState())) as any;
   const created = state.datamodels.find((m: any) => m.name === 'auto findings');
-  // Schema inferred from fixture: topic, finding, source (strings), score (number).
   const names = created.fields.map((f: { name: string }) => f.name).sort();
   expect(names).toEqual(['finding', 'score', 'source', 'topic']);
   const scoreField = created.fields.find((f: { name: string }) => f.name === 'score');
