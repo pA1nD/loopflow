@@ -12,6 +12,15 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 const HEADLESS = process.env.LOOPFLOW_HEADLESS === '1';
 
+// Optional CDP (Chrome DevTools Protocol) endpoint so tools like Playwright
+// or raw fetch can drive / inspect the running app. Enabled when
+// LOOPFLOW_DEBUG_PORT is set. Must be registered BEFORE app.whenReady().
+const DEBUG_PORT = process.env.LOOPFLOW_DEBUG_PORT;
+if (DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', DEBUG_PORT);
+  app.commandLine.appendSwitch('remote-allow-origins', '*');
+}
+
 // JSON-on-disk state. One line to pass to the preload (so it can sync-read
 // it before the renderer boots), one ipcMain handler for writes.
 // LOOPFLOW_STATE_FILE is honored as an override (tests point at a temp
@@ -48,6 +57,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Sandbox must be off so the preload can sync-read the state file
+      // via node:fs before the renderer boots. We still keep context
+      // isolation on and expose only the narrow bridge (storage, llm).
+      sandbox: false,
       offscreen: HEADLESS,
     },
   });

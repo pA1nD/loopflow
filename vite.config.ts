@@ -11,6 +11,15 @@ export default defineConfig({
       },
       preload: {
         input: 'electron/preload.ts',
+        // Emit ESM so Electron's new ES-module loader (used when
+        // sandbox:false) doesn't error on require().
+        vite: {
+          build: {
+            rollupOptions: {
+              output: { format: 'es' },
+            },
+          },
+        },
       },
       renderer: {},
     }),
