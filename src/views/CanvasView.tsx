@@ -171,10 +171,13 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     };
   }, [drag, canvas.id]);
 
-  // Click-to-place connection: clicking a port enters "placing" mode (a
-  // ghost card follows the cursor); the next click either connects to a
-  // target card, drops a new llm card on empty canvas, or cancels if it
-  // lands on the source card.
+  // Click-to-place connection: mousedown on a port enters "placing" mode
+  // (a ghost card follows the cursor). The NEXT mousedown resolves —
+  // connecting to the card under the cursor, spawning a new llm card on
+  // empty canvas, or cancelling if it lands on the source. Resolving on
+  // mousedown (and in the capture phase) is deliberate: the opening press
+  // already fired and completed before this effect even registered a
+  // listener, so it cannot self-cancel.
   useEffect(() => {
     if (!connect) return;
     const content = contentRef.current;
@@ -185,7 +188,7 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
         prev ? { ...prev, cursorX: e.clientX - rect.left, cursorY: e.clientY - rect.top } : prev,
       );
     };
-    const onClick = (e: MouseEvent) => {
+    const onResolve = (e: MouseEvent) => {
       const rect = content.getBoundingClientRect();
       const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
@@ -219,19 +222,14 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
       if (e.key === 'Escape') setConnect(null);
     };
     window.addEventListener('mousemove', onMove);
+    // Capture phase: runs before the target's handlers (including a port's
+    // own onMouseDown) so e.stopPropagation() on the target cannot swallow
+    // the resolution.
+    window.addEventListener('mousedown', onResolve, true);
     window.addEventListener('keydown', onKey);
-    // Defer the click listener past the current event loop tick so the
-    // click that FINISHES the opening mousedown (which is how placing mode
-    // is entered) does not immediately resolve it.
-    let clickAttached = false;
-    const attachDelay = setTimeout(() => {
-      window.addEventListener('click', onClick);
-      clickAttached = true;
-    }, 0);
     return () => {
-      clearTimeout(attachDelay);
-      if (clickAttached) window.removeEventListener('click', onClick);
       window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mousedown', onResolve, true);
       window.removeEventListener('keydown', onKey);
     };
   }, [connect, canvas.id, canvas.cards]);
@@ -521,8 +519,12 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   // mousedown (not click) because the port is small (10px)
-                  // and a real mouse can drift a pixel between down/up, which
-                  // fires click on the surrounding card instead of the port.
+                  // and a real mouse can drift between down/up, which would
+                  // fire click on the surrounding card instead of the port.
+                  // When placing is already active, the capture-phase
+                  // resolver has already handled this press — don't start
+                  // a new placing from this port.
+                  if (connect) return;
                   startConnect(card, e);
                 }}
               />
