@@ -2,15 +2,20 @@
   --bg: #fafafa;
   --fg: #1c1c1e;
   --muted: #8a8a8e;
-  --line: #e5e5ea;
+  --line: #ececec;
+  --line-strong: #d6d6d6;
   --accent: #1c1c1e;
   --paper: #ffffff;
+  --hover: #f1f1f1;
+  --selected: #ebeefb;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
   font-family:
-    'Virgil', 'Cascadia', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    sans-serif;
-  font-size: 14px;
+    'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  font-size: 13px;
   color: var(--fg);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -26,6 +31,24 @@ body,
   overflow: hidden;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  outline: none;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -37,14 +60,218 @@ body,
   height: 36px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--muted);
+  padding: 0 80px;
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 
-.empty {
+.titlebar-spacer {
+  flex: 1;
+}
+
+.titlebar-tabs {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 4px;
+  background: #ececec;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tab {
+  padding: 4px 14px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  border: none;
+}
+
+.tab:hover {
+  color: var(--fg);
+}
+
+.tab.active {
+  background: var(--paper);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 220px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 6px;
+}
+
+.sidebar-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.icon-btn {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  flex: 1;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.sidebar-item:hover {
+  background: var(--hover);
+}
+
+.sidebar-item.active {
+  background: var(--selected);
+}
+
+.sidebar-item-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-empty {
+  list-style: none;
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  flex-shrink: 0;
+}
+
+.sidebar-item.active .dot {
+  background: var(--accent);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+}
+
+.placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.placeholder-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.placeholder h2 {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.primary {
+  background: var(--accent);
+  color: white;
+  border-radius: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  font-size: 12px;
+}
+
+.primary:hover {
+  opacity: 0.9;
+}
+
+.canvas-area,
+.datastore-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.canvas-name {
+  flex: 1;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.canvas-name:hover,
+.canvas-name:focus {
+  background: var(--hover);
+}
+
+.canvas-meta {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  margin-left: 12px;
+}
+
+.canvas-stage,
+.datastore-stage {
   flex: 1;
   display: grid;
   place-items: center;
