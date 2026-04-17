@@ -15,7 +15,25 @@ export interface Card {
   // paramsSchema — validated at the edge (inspector) rather than at the type
   // level so new actions can ship without widening the Card interface.
   params?: Record<string, unknown>;
+  // Optional persistence: where the card's output rows are written. The
+  // kernel handles writing — actions just produce the rows.
+  storage?: CardStorage;
 }
+
+export type CardStorageMode = 'none' | 'existing' | 'new';
+
+export type CardStorage =
+  | { mode: 'none' }
+  | { mode: 'existing'; datamodelId: string }
+  | {
+      mode: 'new';
+      name: string;
+      fields: Field[];
+      // After the first run the kernel materializes the datamodel and stores
+      // its id here so subsequent runs append to the same table instead of
+      // recreating it.
+      createdId?: string;
+    };
 
 export interface Edge {
   id: string;

@@ -576,6 +576,101 @@ textarea::placeholder {
   padding: var(--sp-1) 0;
 }
 
+/* ---- card-level data section in inspector ---- */
+
+.data-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.data-mode {
+  display: flex;
+  gap: 2px;
+  background: #e8e6e1;
+  border-radius: var(--r-md);
+  padding: 3px;
+}
+
+.data-mode-btn {
+  flex: 1;
+  height: 26px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: lowercase;
+}
+
+.data-mode-btn.active {
+  background: var(--paper);
+  color: var(--fg);
+  box-shadow: var(--shadow-sm);
+}
+
+.data-mode-btn:hover:not(.active):not(:disabled) {
+  color: var(--fg);
+}
+
+.data-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.data-fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.data-field {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.data-field-name {
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-size: 12px;
+}
+.data-field-name:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.data-field-type {
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.data-add-field {
+  align-self: flex-start;
+}
+
+.data-new-created {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--line-strong);
+}
+
 /* ---- runs panel ---- */
 
 .runs-stats {

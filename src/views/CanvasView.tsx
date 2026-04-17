@@ -293,19 +293,6 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
           </svg>
           <span>llm</span>
         </button>
-        <button
-          className="toolbar-btn"
-          onClick={() => addCardOfKind('datastore-append')}
-          data-testid="add-sink"
-          title="add datastore sink"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <ellipse cx="12" cy="5" rx="8" ry="2.5" />
-            <path d="M4 5v14c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5" />
-            <path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" />
-          </svg>
-          <span>sink</span>
-        </button>
       </nav>
       <div
         className={`canvas-scroll ${connect ? 'is-connecting' : ''}`}

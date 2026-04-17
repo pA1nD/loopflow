@@ -23,20 +23,12 @@ const canvasId = id();
 const findingsId = id();
 const runsId = id();
 
-const fieldIds = {
-  topic: id(),
-  finding: id(),
-  source: id(),
-  score: id(),
-  // runs schema
-  cardId: 'cardId',
-  actionType: 'actionType',
-  startedAt: 'startedAt',
-  durationMs: 'durationMs',
-  status: 'status',
-  output: 'output',
-  error: 'error',
-};
+const findingsFields = [
+  { id: id(), name: 'topic', type: 'string' },
+  { id: id(), name: 'finding', type: 'string' },
+  { id: id(), name: 'source', type: 'string' },
+  { id: id(), name: 'score', type: 'number' },
+];
 
 const state = {
   view: 'canvas',
@@ -62,7 +54,7 @@ const state = {
           kind: 'llm',
           title: 'last 30 days',
           body: '',
-          x: 120 + 180 + 48,
+          x: 120 + 220 + 48,
           y: 200,
           params: {
             prompt:
@@ -71,9 +63,10 @@ const state = {
               'and a relevance `score` between 0 and 1. Always set `topic` to "react 19".',
             skill: 'last30days',
             envVars: '',
-            datamodelId: findingsId,
-            datamodelName: 'findings',
           },
+          // New: card-level storage. Persistence is no longer wired up
+          // through the LLM action's params — the kernel writes the rows.
+          storage: { mode: 'existing', datamodelId: findingsId },
         },
       ],
       edges: [{ id: id(), from: triggerId, to: llmId }],
@@ -86,25 +79,20 @@ const state = {
       isSystem: true,
       fields: [
         { id: 'flowId', name: 'flowId', type: 'string' },
-        { id: fieldIds.cardId, name: 'cardId', type: 'string' },
-        { id: fieldIds.actionType, name: 'actionType', type: 'string' },
-        { id: fieldIds.startedAt, name: 'startedAt', type: 'string' },
-        { id: fieldIds.durationMs, name: 'durationMs', type: 'number' },
-        { id: fieldIds.status, name: 'status', type: 'string' },
-        { id: fieldIds.output, name: 'output', type: 'string' },
-        { id: fieldIds.error, name: 'error', type: 'string' },
+        { id: 'cardId', name: 'cardId', type: 'string' },
+        { id: 'actionType', name: 'actionType', type: 'string' },
+        { id: 'startedAt', name: 'startedAt', type: 'string' },
+        { id: 'durationMs', name: 'durationMs', type: 'number' },
+        { id: 'status', name: 'status', type: 'string' },
+        { id: 'output', name: 'output', type: 'string' },
+        { id: 'error', name: 'error', type: 'string' },
       ],
       rows: [],
     },
     {
       id: findingsId,
       name: 'findings',
-      fields: [
-        { id: fieldIds.topic, name: 'topic', type: 'string' },
-        { id: fieldIds.finding, name: 'finding', type: 'string' },
-        { id: fieldIds.source, name: 'source', type: 'string' },
-        { id: fieldIds.score, name: 'score', type: 'number' },
-      ],
+      fields: findingsFields,
       rows: [],
     },
   ],

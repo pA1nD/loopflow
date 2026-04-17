@@ -64,3 +64,29 @@ Rules:
 
 When in doubt, ask: "if this test failed six months from now, would I
 want to know?" If yes, keep it. If no, delete it.
+
+## 3. Drop the dev database instead of writing migrations
+
+We're in early development. When a schema or persisted-shape change
+would require migrating existing data on the dev server, **drop the
+data instead of writing migration logic.** Keep the code path simple:
+new shape, fresh state, move on. No version checks, no upgrade
+helpers, no compatibility shims.
+
+This will change later when there are real users with real data —
+but right now, migration code is pure overhead and a place for bugs
+to hide. If you find yourself reaching for a migration, stop and
+drop the store instead.
+
+## 4. Build and run an example after a bigger change
+
+Before reporting a non-trivial change as done, **construct a concrete
+example, run it, and leave it in a state the human can inspect
+directly** (open canvas, seeded cards, a completed run, etc.). Use the
+CDP scripts from §1 to drive it.
+
+This is **especially important when you dropped data** per §3 — the
+human's previous canvas is gone, and they need something tangible to
+poke at to confirm the new behavior works. Don't hand back an empty
+app and a "should work now"; hand back a live example they can click
+through.

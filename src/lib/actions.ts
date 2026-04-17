@@ -2,7 +2,7 @@
 // run() function. The kernel only knows this interface; action bodies are
 // intended to be replaceable (and eventually AI-authorable).
 
-import type { Datamodel, Field, FieldType } from './types';
+import type { CardStorage, Datamodel, Field, FieldType } from './types';
 
 export type ParamType =
   | 'string'
@@ -29,15 +29,9 @@ export interface ActionContext {
   log: (msg: string) => void;
   getDatamodel: (id: string) => Datamodel | undefined;
   findDatamodelByName: (name: string) => Datamodel | undefined;
-  appendRow: (datamodelId: string, values: Record<string, unknown>) => void;
-  // Create a datamodel whose schema is inferred from a sample row.
-  createDatamodelFromRows: (
-    name: string,
-    rows: Array<Record<string, unknown>>,
-  ) => Datamodel;
-  // Patches this card's own params (used when an action wants to remember
-  // state across runs, e.g. "here is the datamodel I auto-created").
-  setOwnParam: (name: string, value: unknown) => void;
+  // Card-level storage config — actions read it to know what shape they
+  // should produce, but the kernel handles writing.
+  storage?: CardStorage;
 }
 
 export type ActionCategory = 'trigger' | 'action' | 'sink' | 'label';
@@ -82,33 +76,6 @@ declare global {
   }
 }
 
-// The default schema is suitable for research-style outputs (findings with
-// a source and score). Users can override via the `schema` param on the
-// llm action — anything valid for `--json-schema`.
-const DEFAULT_LLM_SCHEMA = {
-  type: 'object',
-  properties: {
-    findings: {
-      type: 'array',
-      minItems: 2,
-      maxItems: 5,
-      items: {
-        type: 'object',
-        properties: {
-          topic: { type: 'string' },
-          finding: { type: 'string' },
-          source: { type: 'string' },
-          score: { type: 'number', minimum: 0, maximum: 1 },
-        },
-        required: ['topic', 'finding', 'source', 'score'],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ['findings'],
-  additionalProperties: false,
-} as const;
-
 async function invokeLlm(req: LlmRequest): Promise<LlmResponse> {
   const bridge = typeof window !== 'undefined' ? window.loopflow?.llm : undefined;
   if (!bridge) {
@@ -135,24 +102,6 @@ function parseEnvVars(raw: string | undefined): Record<string, string> {
   return out;
 }
 
-// Extract a rows array from the LLM response shape. Accepts a top-level
-// array, an object with `findings` / `rows` / `items`, or a single object
-// (single-row output).
-function extractRows(parsed: unknown): Array<Record<string, unknown>> {
-  if (!parsed) return [];
-  if (Array.isArray(parsed)) return parsed as Array<Record<string, unknown>>;
-  if (typeof parsed === 'object') {
-    const obj = parsed as Record<string, unknown>;
-    for (const key of ['findings', 'rows', 'items', 'results'] as const) {
-      if (Array.isArray(obj[key])) return obj[key] as Array<Record<string, unknown>>;
-    }
-    // Treat the object itself as one row, dropping obvious container keys.
-    const { topic, generatedAt, ...rest } = obj; // eslint-disable-line @typescript-eslint/no-unused-vars
-    if (Object.keys(rest).length > 0) return [rest as Record<string, unknown>];
-  }
-  return [];
-}
-
 // ------------------------------------------------------------------
 // Built-in actions
 // ------------------------------------------------------------------
@@ -174,14 +123,14 @@ const llm: ActionType = {
   label: 'llm',
   category: 'action',
   description:
-    'Wraps `claude -p` with a JSON schema and appends the structured output to a datamodel (selected or auto-created).',
+    'Wraps `claude -p`. Persistence is handled by the card\'s data settings — pick or define a datamodel below and the LLM is asked to produce its exact shape.',
   params: [
     {
       name: 'prompt',
       type: 'text',
       label: 'prompt',
       placeholder:
-        'e.g. Research "react 19" using the last30days skill — return 3 concrete findings.',
+        'e.g. Research "react 19" using the last30days skill — return concrete findings.',
     },
     {
       name: 'skill',
@@ -194,46 +143,28 @@ const llm: ActionType = {
       name: 'envVars',
       type: 'text',
       label: 'env vars',
-      placeholder: 'ANTHROPIC_API_KEY=...\nREDDIT_CLIENT_ID=...',
+      placeholder: 'REDDIT_CLIENT_ID=...',
       help: 'Passed to the claude subprocess, one KEY=value per line.',
-    },
-    {
-      name: 'schema',
-      type: 'text',
-      label: 'json schema',
-      default: JSON.stringify(DEFAULT_LLM_SCHEMA, null, 2),
-      help: 'Forwarded to --json-schema so claude enforces the output shape.',
-    },
-    {
-      name: 'datamodelId',
-      type: 'datamodel',
-      label: 'target datamodel',
-      help: 'Leave empty to auto-create one from the first response.',
-    },
-    {
-      name: 'datamodelName',
-      type: 'string',
-      label: 'auto-create name',
-      placeholder: 'findings',
-      default: 'llm results',
-      help: 'Used when no target datamodel is selected — the first run creates and remembers it.',
     },
   ],
   run: async (ctx) => {
     const prompt =
       (ctx.params.prompt as string | undefined) ??
-      // fallback to upstream input.topic if prompt wasn't configured
       (() => {
         const topic = (ctx.input as { topic?: string } | null | undefined)?.topic;
         return topic ? `Research "${topic}"` : '';
       })();
     const skill = (ctx.params.skill as string | undefined) || undefined;
     const envVars = parseEnvVars(ctx.params.envVars as string | undefined);
-    const schema =
-      (ctx.params.schema as string | undefined)?.trim() ||
-      JSON.stringify(DEFAULT_LLM_SCHEMA);
 
-    ctx.log(`llm: calling claude -p skill="${skill ?? ''}" envKeys=[${Object.keys(envVars).join(',')}]`);
+    // The schema for claude -p is derived from the card's storage config.
+    // No more separate schema param — the storage IS the schema.
+    const fields = resolveStorageFields(ctx);
+    const schema = fields.length > 0 ? buildSchemaFromFields(fields) : undefined;
+
+    ctx.log(
+      `llm: calling claude -p skill="${skill ?? ''}" fields=[${fields.map((f) => f.name).join(',')}]`,
+    );
     const response = await invokeLlm({ prompt, skill, envVars, schema });
 
     let parsed = response.parsed;
@@ -244,59 +175,68 @@ const llm: ActionType = {
         parsed = { response: response.text };
       }
     }
-    const rows = extractRows(parsed);
-    if (rows.length === 0) {
-      ctx.log('llm: response produced no rows, nothing to append');
-      return { rowsAppended: 0, response: parsed };
-    }
-
-    // Resolve target datamodel — either preconfigured, reusable by name, or
-    // auto-created from the first row's keys.
-    let datamodelId = (ctx.params.datamodelId as string | undefined) || undefined;
-    if (datamodelId && !ctx.getDatamodel(datamodelId)) datamodelId = undefined;
-    if (!datamodelId) {
-      const wanted = (ctx.params.datamodelName as string | undefined)?.trim() || 'llm results';
-      const existing = ctx.findDatamodelByName(wanted);
-      const target = existing ?? ctx.createDatamodelFromRows(wanted, rows);
-      datamodelId = target.id;
-      ctx.setOwnParam('datamodelId', datamodelId);
-      ctx.log(
-        existing
-          ? `llm: reusing existing datamodel "${wanted}"`
-          : `llm: created datamodel "${wanted}" with ${target.fields.length} fields`,
-      );
-    }
-
-    for (const row of rows) ctx.appendRow(datamodelId, row);
-    ctx.log(`llm: appended ${rows.length} row(s)`);
-    return { rowsAppended: rows.length, datamodelId };
+    return parsed;
   },
 };
 
-const datastoreAppend: ActionType = {
-  id: 'datastore-append',
-  label: 'datastore append',
-  category: 'sink',
-  description: "Writes the upstream output to a datamodel's rows.",
-  params: [{ name: 'datamodelId', type: 'datamodel', label: 'target datamodel' }],
-  run: async (ctx) => {
-    const datamodelId = ctx.params.datamodelId as string | undefined;
-    if (!datamodelId) throw new Error('datastore-append: no datamodel selected');
-    const model = ctx.getDatamodel(datamodelId);
-    if (!model) throw new Error(`datastore-append: datamodel ${datamodelId} not found`);
-    const rows = extractRows(ctx.input);
-    for (const row of rows) ctx.appendRow(datamodelId, row);
-    ctx.log(`datastore-append: wrote ${rows.length} row(s) to ${model.name}`);
-    return { appended: rows.length, datamodelId };
-  },
-};
+// Inspect the card's storage config and return the field schema we want
+// claude to produce rows against. Returns [] when storage is 'none' (no
+// schema constraint).
+function resolveStorageFields(ctx: ActionContext): Array<{ name: string; type: FieldType }> {
+  const s = ctx.storage;
+  if (!s || s.mode === 'none') return [];
+  if (s.mode === 'existing') {
+    const m = ctx.getDatamodel(s.datamodelId);
+    return m ? m.fields.map((f) => ({ name: f.name, type: f.type })) : [];
+  }
+  return s.fields.map((f) => ({ name: f.name, type: f.type }));
+}
+
+function buildSchemaFromFields(fields: Array<{ name: string; type: FieldType }>): string {
+  const props: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const f of fields) {
+    props[f.name] = jsonSchemaForType(f.type);
+    required.push(f.name);
+  }
+  const schema = {
+    type: 'object',
+    properties: {
+      rows: {
+        type: 'array',
+        minItems: 1,
+        items: {
+          type: 'object',
+          properties: props,
+          required,
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['rows'],
+    additionalProperties: false,
+  };
+  return JSON.stringify(schema);
+}
+
+function jsonSchemaForType(t: FieldType): Record<string, unknown> {
+  switch (t) {
+    case 'number':
+      return { type: 'number' };
+    case 'boolean':
+      return { type: 'boolean' };
+    case 'date':
+      return { type: 'string', format: 'date' };
+    default:
+      return { type: 'string' };
+  }
+}
 
 const labelOnly = (id: string): ActionType => ({ id, label: id, category: 'label' });
 
 const registry: ActionType[] = [
   interval,
   llm,
-  datastoreAppend,
   labelOnly('prompt'),
   labelOnly('tool'),
   labelOnly('output'),

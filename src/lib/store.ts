@@ -206,6 +206,19 @@ export const actions = {
       ),
     });
   },
+  setCardStorage(canvasId: string, cardId: string, storage: import('./types').CardStorage | undefined) {
+    commit({
+      ...state,
+      canvases: state.canvases.map((c) =>
+        c.id === canvasId
+          ? {
+              ...c,
+              cards: c.cards.map((card) => (card.id === cardId ? { ...card, storage } : card)),
+            }
+          : c,
+      ),
+    });
+  },
   updateCardParam(canvasId: string, cardId: string, name: string, value: unknown) {
     commit({
       ...state,
@@ -372,6 +385,19 @@ export const actions = {
         m.id === modelId ? { ...m, rows: m.rows.filter((_, i) => i !== rowIndex) } : m,
       ),
     });
+  },
+
+  // Create a datamodel with an explicit list of fields. Used by the kernel
+  // when a card's storage.mode === 'new' fires for the first time.
+  createDatamodelWithFields(name: string, fields: Array<{ name: string; type: FieldType }>): Datamodel {
+    const model: Datamodel = {
+      id: id(),
+      name,
+      fields: fields.map((f) => ({ id: id(), name: f.name, type: f.type })),
+      rows: [],
+    };
+    commit({ ...state, datamodels: [...state.datamodels, model] });
+    return model;
   },
 
   // Create a datamodel with a schema inferred from the first row's keys

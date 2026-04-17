@@ -3,7 +3,7 @@
 
 import { actions as storeActions, getState, RUNS_MODEL_NAME } from './store';
 import { getAction } from './actions';
-import type { Canvas, Card } from './types';
+import type { Canvas, Card, CardStorage, Datamodel } from './types';
 
 interface RunResult {
   status: 'ok' | 'error';
@@ -40,17 +40,25 @@ async function runSingle(
       log: (msg) => console.info(`[${card.kind}] ${msg}`),
       getDatamodel: (modelId) => getState().datamodels.find((m) => m.id === modelId),
       findDatamodelByName: (name) => getState().datamodels.find((m) => m.name === name),
-      appendRow: (modelId, values) => storeActions.appendRowByFieldName(modelId, values),
-      createDatamodelFromRows: (name, rows) => storeActions.createDatamodelFromRows(name, rows),
-      setOwnParam: (name, value) => storeActions.updateCardParam(canvasId, card.id, name, value),
+      storage: card.storage,
     });
   } catch (e) {
     status = 'error';
     error = e instanceof Error ? e.message : String(e);
-  } finally {
-    runningCards.delete(card.id);
-    bumpRuntime();
   }
+
+  // Card-level storage: kernel writes the rows. Actions just produce data.
+  if (status === 'ok' && card.storage && card.storage.mode !== 'none') {
+    try {
+      writeCardOutput(canvasId, card, output);
+    } catch (e) {
+      status = 'error';
+      error = `storage: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  runningCards.delete(card.id);
+  bumpRuntime();
   const finishedAt = Date.now();
 
   // Record into the system runs datamodel.
@@ -80,6 +88,67 @@ function safeStringify(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+// ---------- card-level storage writer ----------
+
+// Pull rows from a free-shape output: an array, an object with rows/findings/
+// items/results, or a bare object (treated as a single row).
+function rowsFrom(output: unknown): Array<Record<string, unknown>> {
+  if (!output) return [];
+  if (Array.isArray(output)) return output as Array<Record<string, unknown>>;
+  if (typeof output === 'object') {
+    const obj = output as Record<string, unknown>;
+    for (const key of ['rows', 'findings', 'items', 'results'] as const) {
+      if (Array.isArray(obj[key])) return obj[key] as Array<Record<string, unknown>>;
+    }
+    // Strip wrapper keys before treating it as a single row.
+    const { topic, generatedAt, ...rest } = obj;
+    void topic; void generatedAt;
+    if (Object.keys(rest).length > 0) return [rest as Record<string, unknown>];
+  }
+  return [];
+}
+
+function writeCardOutput(canvasId: string, card: Card, output: unknown): void {
+  const storage = card.storage as CardStorage;
+  const rows = rowsFrom(output);
+  if (rows.length === 0) return;
+
+  let datamodelId: string | undefined;
+  let model: Datamodel | undefined;
+
+  if (storage.mode === 'existing') {
+    datamodelId = storage.datamodelId;
+    model = getState().datamodels.find((m) => m.id === datamodelId);
+    if (!model) throw new Error(`datamodel ${datamodelId} not found`);
+  } else if (storage.mode === 'new') {
+    if (storage.createdId) {
+      datamodelId = storage.createdId;
+      model = getState().datamodels.find((m) => m.id === datamodelId);
+      if (!model) {
+        // Underlying datamodel was deleted — recreate from the configured fields.
+        datamodelId = undefined;
+        model = undefined;
+      }
+    }
+    if (!datamodelId) {
+      const created = storeActions.createDatamodelWithFields(
+        storage.name?.trim() || 'output',
+        storage.fields ?? [],
+      );
+      datamodelId = created.id;
+      model = created;
+      // Persist the createdId so subsequent runs append to the same model.
+      storeActions.setCardStorage(canvasId, card.id, {
+        ...storage,
+        createdId: datamodelId,
+      });
+    }
+  }
+
+  if (!datamodelId) return;
+  for (const row of rows) storeActions.appendRowByFieldName(datamodelId, row);
 }
 
 // Depth-first propagation along `edges`. Branches are run serially —
