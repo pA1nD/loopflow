@@ -219,11 +219,19 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
       if (e.key === 'Escape') setConnect(null);
     };
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('click', onClick);
     window.addEventListener('keydown', onKey);
+    // Defer the click listener past the current event loop tick so the
+    // click that FINISHES the opening mousedown (which is how placing mode
+    // is entered) does not immediately resolve it.
+    let clickAttached = false;
+    const attachDelay = setTimeout(() => {
+      window.addEventListener('click', onClick);
+      clickAttached = true;
+    }, 0);
     return () => {
+      clearTimeout(attachDelay);
+      if (clickAttached) window.removeEventListener('click', onClick);
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKey);
     };
   }, [connect, canvas.id, canvas.cards]);
@@ -510,8 +518,13 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
                 data-no-drag
                 title="click to place a connected card"
                 data-testid={`card-port-${card.id}`}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => startConnect(card, e)}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  // mousedown (not click) because the port is small (10px)
+                  // and a real mouse can drift a pixel between down/up, which
+                  // fires click on the surrounding card instead of the port.
+                  startConnect(card, e);
+                }}
               />
             </div>
           );
