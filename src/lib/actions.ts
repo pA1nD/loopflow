@@ -34,7 +34,7 @@ export interface ActionContext {
   storage?: CardStorage;
 }
 
-export type ActionCategory = 'trigger' | 'action' | 'sink' | 'label';
+export type ActionCategory = 'trigger' | 'action';
 
 export interface ActionType {
   id: string;
@@ -232,16 +232,7 @@ function jsonSchemaForType(t: FieldType): Record<string, unknown> {
   }
 }
 
-const labelOnly = (id: string): ActionType => ({ id, label: id, category: 'label' });
-
-const registry: ActionType[] = [
-  interval,
-  llm,
-  labelOnly('prompt'),
-  labelOnly('tool'),
-  labelOnly('output'),
-  labelOnly('note'),
-];
+const registry: ActionType[] = [interval, llm];
 
 const byId = new Map(registry.map((a) => [a.id, a]));
 

@@ -189,7 +189,7 @@ export const actions = {
   addCard(canvasId: string, partial: Partial<Card> = {}): Card {
     const card: Card = {
       id: id(),
-      kind: partial.kind ?? 'prompt',
+      kind: partial.kind ?? 'llm',
       title: partial.title ?? 'untitled',
       body: partial.body ?? '',
       x: partial.x ?? 80 + Math.random() * 200,

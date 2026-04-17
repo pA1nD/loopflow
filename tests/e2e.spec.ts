@@ -373,31 +373,16 @@ async function buildResearchLoop(
     await page.getByTestId('param-datamodelId').selectOption(model.id);
   }
 
-  // Connect trigger -> llm via the port-drag interaction.
+  // Connect trigger -> llm via click-to-place: click the source port to
+  // enter placing mode, then click the target card to drop the connection.
   const connect = async (fromIdx: number, toIdx: number) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const snap = (await page.evaluate(() => window.__loopflow?.getState())) as any;
     const cards = snap.canvases[0].cards;
     const fromId = cards[fromIdx].id;
     const toId = cards[toIdx].id;
-    const port = page.getByTestId(`card-port-${fromId}`);
-    const target = page.locator(`[data-card-id="${toId}"]`);
-    const portBox = await port.boundingBox();
-    const targetBox = await target.boundingBox();
-    if (!portBox || !targetBox) throw new Error('missing geometry for connect');
-    await page.mouse.move(portBox.x + portBox.width / 2, portBox.y + portBox.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(
-      (portBox.x + targetBox.x) / 2,
-      (portBox.y + targetBox.y) / 2,
-      { steps: 10 },
-    );
-    await page.mouse.move(
-      targetBox.x + targetBox.width / 2,
-      targetBox.y + targetBox.height / 2,
-      { steps: 10 },
-    );
-    await page.mouse.up();
+    await page.getByTestId(`card-port-${fromId}`).click();
+    await page.locator(`[data-card-id="${toId}"]`).click();
   };
   await connect(0, 1);
 

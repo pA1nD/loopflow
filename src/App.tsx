@@ -12,6 +12,7 @@ import {
   startScheduler,
   stopScheduler,
   _resetSchedulerState,
+  getLastFiredAt,
 } from './lib/runtime';
 import { Sidebar } from './components/Sidebar';
 import { Titlebar } from './components/Titlebar';
@@ -29,6 +30,8 @@ declare global {
       runFromCard: (canvasId: string, cardId: string) => Promise<void>;
       tick: (now?: number) => Promise<void>;
       seedExample: (name?: 'last30days') => void;
+      actions: typeof actions;
+      getLastFiredAt: (cardId: string) => number | undefined;
     };
   }
 }
@@ -57,6 +60,8 @@ export function App() {
         actions.ensureSystemModels();
         if (name === 'last30days') seedLast30DaysExample();
       },
+      actions,
+      getLastFiredAt,
     };
     return () => stopScheduler();
   }, []);

@@ -22,6 +22,11 @@ const ROW_GAP = 24;
 const MIN_CONTENT_W = 2400;
 const MIN_CONTENT_H = 1400;
 const PAD = 400;
+// Pixel offset of the port dot centers, measured from each card corner.
+// Kept in sync with `.card-port` positioning in styles.css.
+const PORT_Y = 46;
+const PORT_OUT_DX = 1;
+const PORT_IN_DX = -1;
 
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 
@@ -139,70 +144,89 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     };
   }, [canvas.cards]);
 
+  // Card drag (move cards around).
   useEffect(() => {
-    if (!drag && !connect) return;
+    if (!drag) return;
     const content = contentRef.current;
     if (!content) return;
     const onMove = (e: MouseEvent) => {
       const rect = content.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      if (drag) {
-        const dx = x - drag.startX;
-        const dy = y - drag.startY;
-        if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return; // click, not drag
-        actions.updateCard(canvas.id, drag.cardId, {
-          x: Math.max(0, snap(drag.originX + dx)),
-          y: Math.max(0, snap(drag.originY + dy)),
-        });
-        if (!drag.moved) setDrag({ ...drag, moved: true });
-      } else if (connect) {
-        setConnect({ ...connect, cursorX: x, cursorY: y });
-      }
+      const dx = x - drag.startX;
+      const dy = y - drag.startY;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return; // click, not drag
+      actions.updateCard(canvas.id, drag.cardId, {
+        x: Math.max(0, snap(drag.originX + dx)),
+        y: Math.max(0, snap(drag.originY + dy)),
+      });
+      if (!drag.moved) setDrag({ ...drag, moved: true });
     };
-    const onUp = (e: MouseEvent) => {
-      if (drag && !drag.moved) {
-        // pure click — select the card (already selected on mousedown) and do nothing else
-      }
-      if (connect) {
-        const rect = content.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const localY = e.clientY - rect.top;
-        const el = document.elementFromPoint(e.clientX, e.clientY);
-        const cardEl = el?.closest('[data-card-id]') as HTMLElement | null;
-        const targetId = cardEl?.dataset.cardId;
-        if (targetId && targetId !== connect.fromCardId) {
-          actions.addEdge(canvas.id, connect.fromCardId, targetId);
-        } else if (!targetId) {
-          const desiredX = snap(localX - CARD_W / 2);
-          const desiredY = snap(localY - CARD_H / 2);
-          const slot = findOpenSlot(canvas.cards, desiredX, desiredY, rect.width);
-          const placeX =
-            Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3
-              ? desiredX
-              : slot.x;
-          const placeY =
-            Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3
-              ? desiredY
-              : slot.y;
-          const newCard = actions.addCard(canvas.id, {
-            x: Math.max(0, placeX),
-            y: Math.max(0, placeY),
-            kind: 'prompt',
-          });
-          actions.addEdge(canvas.id, connect.fromCardId, newCard.id);
-        }
-        setConnect(null);
-      }
-      setDrag(null);
-    };
+    const onUp = () => setDrag(null);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [drag, connect, canvas.id, canvas.cards]);
+  }, [drag, canvas.id]);
+
+  // Click-to-place connection: clicking a port enters "placing" mode (a
+  // ghost card follows the cursor); the next click either connects to a
+  // target card, drops a new llm card on empty canvas, or cancels if it
+  // lands on the source card.
+  useEffect(() => {
+    if (!connect) return;
+    const content = contentRef.current;
+    if (!content) return;
+    const onMove = (e: MouseEvent) => {
+      const rect = content.getBoundingClientRect();
+      setConnect((prev) =>
+        prev ? { ...prev, cursorX: e.clientX - rect.left, cursorY: e.clientY - rect.top } : prev,
+      );
+    };
+    const onClick = (e: MouseEvent) => {
+      const rect = content.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cardEl = el?.closest('[data-card-id]') as HTMLElement | null;
+      const targetId = cardEl?.dataset.cardId;
+      if (targetId === connect.fromCardId) {
+        setConnect(null);
+        return;
+      }
+      if (targetId) {
+        actions.addEdge(canvas.id, connect.fromCardId, targetId);
+      } else {
+        const desiredX = snap(localX - CARD_W / 2);
+        const desiredY = snap(localY - CARD_H / 2);
+        const slot = findOpenSlot(canvas.cards, desiredX, desiredY, rect.width);
+        const close = Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3;
+        const placeX = close ? desiredX : slot.x;
+        const placeY = close ? desiredY : slot.y;
+        const newCard = actions.addCard(canvas.id, {
+          x: Math.max(0, placeX),
+          y: Math.max(0, placeY),
+          kind: 'llm',
+        });
+        actions.addEdge(canvas.id, connect.fromCardId, newCard.id);
+        actions.setSelectedCard(newCard.id);
+      }
+      setConnect(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConnect(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('click', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [connect, canvas.id, canvas.cards]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -221,6 +245,7 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
   };
 
   const startDrag = (card: Card, e: React.MouseEvent) => {
+    if (connect) return; // in placing mode the click should resolve, not drag
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
     const content = contentRef.current;
     if (!content) return;
@@ -236,7 +261,6 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
   };
 
   const startConnect = (card: Card, e: React.MouseEvent) => {
-    e.stopPropagation();
     const content = contentRef.current;
     if (!content) return;
     const rect = content.getBoundingClientRect();
@@ -371,10 +395,10 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
             const from = cardById(edge.from);
             const to = cardById(edge.to);
             if (!from || !to) return null;
-            const x1 = from.x + CARD_W;
-            const y1 = from.y + CARD_H / 2;
-            const x2 = to.x;
-            const y2 = to.y + CARD_H / 2;
+            const x1 = from.x + CARD_W + PORT_OUT_DX;
+            const y1 = from.y + PORT_Y;
+            const x2 = to.x + PORT_IN_DX;
+            const y2 = to.y + PORT_Y;
             const path = bezier(x1, y1, x2, y2);
             const active = selectedEdge === edge.id;
             return (
@@ -402,8 +426,8 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
             (() => {
               const from = cardById(connect.fromCardId);
               if (!from) return null;
-              const x1 = from.x + CARD_W;
-              const y1 = from.y + CARD_H / 2;
+              const x1 = from.x + CARD_W + PORT_OUT_DX;
+              const y1 = from.y + PORT_Y;
               return (
                 <g>
                   <path
@@ -426,7 +450,7 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
           return (
             <div
               key={card.id}
-              className={`card ${selected ? 'selected' : ''} card-category-${action?.category ?? 'label'} ${running ? 'card-running' : ''}`}
+              className={`card ${selected ? 'selected' : ''} card-category-${action?.category ?? 'action'} ${running ? 'card-running' : ''}`}
               data-card-id={card.id}
               data-testid={`card-${card.id}`}
               style={{
@@ -484,9 +508,10 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
               <div
                 className="card-port card-port-out"
                 data-no-drag
-                title="drag to connect or drop on empty canvas to spawn a new card"
+                title="click to place a connected card"
                 data-testid={`card-port-${card.id}`}
-                onMouseDown={(e) => startConnect(card, e)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => startConnect(card, e)}
               />
             </div>
           );
@@ -497,7 +522,7 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
             <div className="canvas-hint-arrow">↑</div>
             <div className="canvas-hint-title">empty canvas</div>
             <div className="canvas-hint-body">
-              pick a <kbd>trigger</kbd>, <kbd>llm</kbd>, or <kbd>sink</kbd> from the toolbar
+              pick a <kbd>trigger</kbd> or <kbd>llm</kbd> from the toolbar
             </div>
           </div>
         )}

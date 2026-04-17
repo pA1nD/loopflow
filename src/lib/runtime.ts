@@ -216,6 +216,14 @@ export function getLastFiredAt(cardId: string): number | undefined {
   return lastFiredAt.get(cardId);
 }
 
+// Drop a card's scheduler memory so the next enable starts a fresh interval.
+// Called from the UI when the user pauses a trigger — otherwise the disable
+// only takes effect on the next scheduler tick, and a quick off/on toggle
+// would appear to resume the old countdown.
+export function resetTriggerTimer(cardId: string): void {
+  if (lastFiredAt.delete(cardId)) bumpRuntime();
+}
+
 export function startScheduler(intervalMs = 1000) {
   if (schedulerTimer) return;
   schedulerTimer = setInterval(() => tick(), intervalMs);
@@ -236,7 +244,15 @@ export async function tick(now = Date.now()): Promise<void> {
   for (const canvas of state.canvases) {
     for (const card of canvas.cards) {
       if (card.kind !== 'interval-trigger') continue;
-      if (!card.params?.enabled) continue;
+      if (!card.params?.enabled) {
+        // Disabled: drop timer state so re-enabling restarts from zero
+        // rather than resuming mid-interval.
+        if (lastFiredAt.has(card.id)) {
+          lastFiredAt.delete(card.id);
+          bumpRuntime();
+        }
+        continue;
+      }
       const intervalSec = Number(card.params.intervalSeconds ?? 3600);
       const last = lastFiredAt.get(card.id);
       // First tick after enabling: seed the timer so the first fire happens

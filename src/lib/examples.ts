@@ -37,9 +37,11 @@ export function seedLast30DaysExample(): void {
         'and a relevance `score` between 0 and 1. Always set `topic` to "react 19".',
       skill: 'last30days',
       envVars: '',
-      datamodelId: findings.id,
-      datamodelName: 'findings',
     },
+  });
+  actions.setCardStorage(canvas.id, llm.id, {
+    mode: 'existing',
+    datamodelId: findings.id,
   });
 
   actions.addEdge(canvas.id, trigger.id, llm.id);
