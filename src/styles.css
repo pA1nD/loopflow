@@ -1074,7 +1074,12 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   position: relative;
+  /* Keep the absolute-positioned toolbar (and any other overflowers) from
+     bleeding into the sidebar or the terminal panel when the canvas area
+     gets narrow. */
+  overflow: hidden;
 }
 
 .canvas-toolbar {
@@ -1091,7 +1096,15 @@ textarea::placeholder {
   border-radius: var(--r-xl);
   padding: 4px;
   box-shadow: var(--shadow-lg);
+  /* Keep the toolbar within the canvas area. When the area is narrower
+     than the toolbar's natural width, allow horizontal scrolling inside
+     it rather than spilling into adjacent panels. */
+  max-width: calc(100% - 2 * var(--sp-4));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.canvas-toolbar::-webkit-scrollbar { display: none; }
 
 .toolbar-btn {
   display: flex;
