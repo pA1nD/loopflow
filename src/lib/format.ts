@@ -50,3 +50,26 @@ export function formatRelative(iso: string, now = Date.now()): string {
 export function pluralize(n: number, word: string, plural = `${word}s`): string {
   return `${n} ${n === 1 ? word : plural}`;
 }
+
+// "5s", "42s", "1m", "1m 12s", "2h 3m" — compact countdown that rounds to
+// the nearest second and drops idle units.
+export function formatCountdown(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'now';
+  const sec = Math.ceil(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const rs = sec % 60;
+  if (min < 60) return rs === 0 ? `${min}m` : `${min}m ${rs}s`;
+  const hr = Math.floor(min / 60);
+  const rm = min % 60;
+  return rm === 0 ? `${hr}h` : `${hr}h ${rm}m`;
+}
+
+// Human-friendly "every Xs / Xm / Xh" for trigger interval display.
+export function formatInterval(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  if (seconds < 60) return `every ${seconds}s`;
+  if (seconds % 3600 === 0) return `every ${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `every ${seconds / 60}m`;
+  return `every ${seconds}s`;
+}

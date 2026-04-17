@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { actions, RUNS_MODEL_NAME } from '../lib/store';
 import { getAction } from '../lib/actions';
+import {
+  isCardRunning,
+  getLastFiredAt,
+  subscribeRuntime,
+  getRuntimeVersion,
+} from '../lib/runtime';
+import { formatCountdown, formatInterval } from '../lib/format';
 import type { AppState, Canvas, Card } from '../lib/types';
 
 interface Props {
@@ -113,12 +120,15 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     return map;
   }, [state.datamodels]);
 
-  // Tick every second so the "just ran" pulse class drops off naturally.
+  // Wall-clock tick so countdowns and "just ran" pulses refresh naturally.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
+
+  // Subscribe to runtime (running set, scheduler lastFiredAt updates).
+  useSyncExternalStore(subscribeRuntime, getRuntimeVersion, getRuntimeVersion);
 
   const extent = useMemo(() => {
     const maxX = canvas.cards.reduce((m, c) => Math.max(m, c.x + CARD_W), 0);
@@ -381,30 +391,35 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
           const selected = state.selectedCardId === card.id;
           const recent = lastRunByCard.get(card.id);
           const status = recent?.status ?? '';
-          const justRan = recent && now - recent.startedAt < 3000;
+          const justRan = !!recent && now - recent.startedAt < 3000;
+          const running = isCardRunning(card.id);
+          const isTrigger = card.kind === 'interval-trigger';
           return (
             <div
               key={card.id}
-              className={`card ${selected ? 'selected' : ''} card-category-${action?.category ?? 'label'}`}
+              className={`card ${selected ? 'selected' : ''} card-category-${action?.category ?? 'label'} ${running ? 'card-running' : ''}`}
               data-card-id={card.id}
               data-testid={`card-${card.id}`}
               style={{
                 transform: `translate(${card.x}px, ${card.y}px)`,
                 width: CARD_W,
-                height: CARD_H,
+                minHeight: CARD_H,
               }}
-              // Capture phase fires before any descendant onMouseDown, so
-              // clicking a form element inside the card still selects it
-              // even though the input stops propagation for drag avoidance.
               onMouseDownCapture={() => selectCard(card.id)}
               onMouseDown={(e) => startDrag(card, e)}
             >
+              {running && (
+                <div className="card-running-badge" data-testid={`card-running-${card.id}`}>
+                  <span className="running-spinner" />
+                  <span>running</span>
+                </div>
+              )}
               <div className="card-port card-port-in" />
               <div className="card-header">
                 <span className="card-kind-label" data-testid={`card-kind-${card.id}`}>
                   {action?.label ?? card.kind}
                 </span>
-                {status && (
+                {status && !running && (
                   <span
                     className={`card-status card-status-${status} ${justRan ? 'card-status-pulse' : ''}`}
                     title={`last run: ${status}`}
@@ -434,6 +449,9 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
                 }
               />
               <CardSummary card={card} state={state} />
+              {isTrigger && (
+                <TriggerRuntimePatch canvas={canvas} card={card} now={now} />
+              )}
               <div
                 className="card-port card-port-out"
                 data-no-drag
@@ -462,8 +480,17 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
 function CardSummary({ card, state }: { card: Card; state: AppState }) {
   const action = getAction(card.kind);
   if (!action?.params?.length) return null;
-  // Render one compact param preview — whichever non-empty param is most
-  // identifying. Keeps the card readable at a glance.
+  // Trigger cards get a more human summary in the main card body — the
+  // runtime patch below handles the live countdown/toggle.
+  if (card.kind === 'interval-trigger') {
+    const sec = Number(card.params?.intervalSeconds ?? 0);
+    if (!sec) return null;
+    return (
+      <div className="card-summary" data-testid={`card-summary-${card.id}`}>
+        {formatInterval(sec)}
+      </div>
+    );
+  }
   const preview = action.params
     .map((p) => {
       const raw = card.params?.[p.name];
@@ -480,6 +507,58 @@ function CardSummary({ card, state }: { card: Card; state: AppState }) {
   return (
     <div className="card-summary" data-testid={`card-summary-${card.id}`}>
       {preview}
+    </div>
+  );
+}
+
+// Runtime patch for interval-trigger cards: a visual "live" strip at the
+// bottom of the card showing the on/off toggle and the countdown to the
+// next fire. Styled distinctly from the configuration-y body above.
+function TriggerRuntimePatch({
+  canvas,
+  card,
+  now,
+}: {
+  canvas: Canvas;
+  card: Card;
+  now: number;
+}) {
+  const enabled = Boolean(card.params?.enabled);
+  const intervalSec = Number(card.params?.intervalSeconds ?? 0);
+  const lastFired = getLastFiredAt(card.id);
+  const nextFireAt =
+    enabled && intervalSec && lastFired ? lastFired + intervalSec * 1000 : null;
+  const remainingMs = nextFireAt !== null ? nextFireAt - now : null;
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    actions.updateCardParam(canvas.id, card.id, 'enabled', !enabled);
+  };
+
+  return (
+    <div
+      className={`card-runtime ${enabled ? 'on' : 'off'}`}
+      data-no-drag
+      data-testid={`card-runtime-${card.id}`}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <button
+        className={`toggle ${enabled ? 'on' : 'off'}`}
+        onClick={toggle}
+        data-no-drag
+        data-testid={`card-toggle-${card.id}`}
+        title={enabled ? 'active — click to pause' : 'paused — click to activate'}
+        aria-pressed={enabled}
+      >
+        <span className="toggle-knob" />
+      </button>
+      <span className="runtime-next">
+        {enabled
+          ? remainingMs !== null
+            ? `next in ${formatCountdown(remainingMs)}`
+            : 'starting…'
+          : 'paused'}
+      </span>
     </div>
   );
 }

@@ -28,6 +28,8 @@ async function runSingle(
   let output: unknown = undefined;
   let error: string | undefined;
   let status: 'ok' | 'error' = 'ok';
+  runningCards.add(card.id);
+  bumpRuntime();
   try {
     output = await action.run({
       canvasId,
@@ -45,6 +47,9 @@ async function runSingle(
   } catch (e) {
     status = 'error';
     error = e instanceof Error ? e.message : String(e);
+  } finally {
+    runningCards.delete(card.id);
+    bumpRuntime();
   }
   const finishedAt = Date.now();
 
@@ -115,6 +120,33 @@ async function walk(canvas: Canvas, card: Card, input: unknown, flowId: string):
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 const lastFiredAt = new Map<string, number>();
 
+// ---------- observable runtime state ----------
+// Cards that are currently executing (between start and finish of runSingle).
+const runningCards = new Set<string>();
+let runtimeVersion = 0;
+const runtimeSubs = new Set<() => void>();
+function bumpRuntime() {
+  runtimeVersion++;
+  for (const s of runtimeSubs) s();
+}
+
+export function subscribeRuntime(cb: () => void): () => void {
+  runtimeSubs.add(cb);
+  return () => runtimeSubs.delete(cb);
+}
+
+export function getRuntimeVersion(): number {
+  return runtimeVersion;
+}
+
+export function isCardRunning(cardId: string): boolean {
+  return runningCards.has(cardId);
+}
+
+export function getLastFiredAt(cardId: string): number | undefined {
+  return lastFiredAt.get(cardId);
+}
+
 export function startScheduler(intervalMs = 1000) {
   if (schedulerTimer) return;
   schedulerTimer = setInterval(() => tick(), intervalMs);
@@ -142,10 +174,12 @@ export async function tick(now = Date.now()): Promise<void> {
       // AFTER one interval, not immediately on enable.
       if (last === undefined) {
         lastFiredAt.set(card.id, now);
+        bumpRuntime();
         continue;
       }
       if (now - last >= intervalSec * 1000) {
         lastFiredAt.set(card.id, now);
+        bumpRuntime();
         try {
           await runFromCard(canvas.id, card.id);
         } catch (e) {
