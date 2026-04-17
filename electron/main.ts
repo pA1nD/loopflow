@@ -94,6 +94,120 @@ const CYAN = '\x1b[36m';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
+// ---------- generic exec + terminal reporter ----------
+// Any action that shells out (claude today, scripts/docker later) goes
+// through runExec. The terminal receives a truthful, copy-pastable
+// reproduction: cwd change, exported env vars, properly shell-quoted
+// argv, and a heredoc for stdin. That way whatever the user sees in the
+// terminal panel is literally what they can paste into their shell.
+
+interface ExecSpec {
+  cmd: string[]; // argv[0] is the binary; rest are arguments, unquoted
+  cwd?: string;
+  env?: Record<string, string>; // ADDITIONAL env — inherited shell env is assumed
+  stdin?: string; // if set, fed to the process and rendered as a heredoc
+  timeoutMs?: number;
+  sessionId?: string; // terminal session (typically canvasId)
+}
+
+interface ExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  durationMs: number;
+}
+
+// POSIX single-quote shell quoting. Safe chars stay bare; everything else
+// is wrapped in '…', and embedded single quotes become '\'' (end-quote,
+// escaped quote, reopen-quote).
+function shellQuote(s: string): string {
+  if (s === '') return "''";
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(s)) return s;
+  return "'" + s.replace(/'/g, `'\\''`) + "'";
+}
+
+function emitExecHeader(sid: string, spec: ExecSpec) {
+  // Always emit cwd so the terminal line is reproducible without the user
+  // having to guess which directory the process ran in.
+  const cwd = spec.cwd ?? process.cwd();
+  appendSession(sid, `${DIM}$ cd ${shellQuote(cwd)}${RESET}\r\n`);
+  for (const [k, v] of Object.entries(spec.env ?? {})) {
+    appendSession(sid, `${DIM}$ export ${k}=${shellQuote(v)}${RESET}\r\n`);
+  }
+  const [bin, ...rest] = spec.cmd;
+  const head =
+    `${BOLD}${CYAN}${shellQuote(bin)}${RESET}${DIM}` +
+    (rest.length ? ' ' + rest.map(shellQuote).join(' ') : '');
+  if (spec.stdin !== undefined) {
+    appendSession(sid, `${DIM}$ ${head} <<'LOOPFLOW-STDIN'${RESET}\r\n`);
+    appendSession(sid, spec.stdin);
+    if (!spec.stdin.endsWith('\n')) appendSession(sid, '\r\n');
+    appendSession(sid, `${DIM}LOOPFLOW-STDIN${RESET}\r\n`);
+  } else {
+    appendSession(sid, `${DIM}$ ${head}${RESET}\r\n`);
+  }
+}
+
+function emitExecFooter(sid: string, exitCode: number, durationMs: number) {
+  const accent = exitCode === 0 ? DIM : `${RED}`;
+  appendSession(
+    sid,
+    `\r\n${accent}[exit ${exitCode} · ${durationMs}ms]${RESET}\r\n\r\n`,
+  );
+}
+
+async function runExec(spec: ExecSpec): Promise<ExecResult> {
+  const sid = spec.sessionId;
+  const startedAt = Date.now();
+  if (sid) emitExecHeader(sid, spec);
+
+  return await new Promise<ExecResult>((resolve, reject) => {
+    const [cmd, ...args] = spec.cmd;
+    const env = { ...process.env, ...(spec.env ?? {}) };
+    const proc = spawn(cmd, args, {
+      env,
+      cwd: spec.cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    const timeoutMs = spec.timeoutMs ?? 180_000;
+    const timer = setTimeout(() => {
+      proc.kill('SIGTERM');
+      if (sid)
+        appendSession(sid, `${RED}[timeout after ${timeoutMs / 1000}s — SIGTERM sent]${RESET}\r\n`);
+      reject(new Error(`exec timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
+    proc.stdout.on('data', (d) => {
+      const s = d.toString();
+      stdout += s;
+      if (sid) appendSession(sid, s);
+    });
+    proc.stderr.on('data', (d) => {
+      const s = d.toString();
+      stderr += s;
+      // dim stderr so it visually separates from stdout in the terminal
+      if (sid) appendSession(sid, `${DIM}${s}${RESET}`);
+    });
+    proc.on('error', (e) => {
+      clearTimeout(timer);
+      if (sid) appendSession(sid, `${RED}[spawn error: ${e.message}]${RESET}\r\n`);
+      reject(e);
+    });
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      const exitCode = code ?? -1;
+      const durationMs = Date.now() - startedAt;
+      if (sid) emitExecFooter(sid, exitCode, durationMs);
+      resolve({ stdout, stderr, exitCode, durationMs });
+    });
+    if (spec.stdin !== undefined) {
+      proc.stdin.write(spec.stdin);
+      proc.stdin.end();
+    }
+  });
+}
+
 function createWindow() {
   // Expose the state path + headless flag to the preload via process env
   // so preload can sync-read the file before the renderer starts.
@@ -191,93 +305,42 @@ ipcMain.handle('llm:call', async (_event, req: LlmCall) => {
   const schema = req.schema?.trim() ? req.schema : undefined;
   const args = ['-p', '--output-format=json'];
   if (schema) args.push('--json-schema', schema);
-
-  const env = { ...process.env, ...(req.envVars ?? {}) };
   const composed = composePrompt(req.prompt, req.skill);
 
-  const sid = req.sessionId;
-  const tee = (chunk: string) => {
-    if (sid) appendSession(sid, chunk);
-  };
-
-  // Header: show the actual command line (schema elided because it can be
-  // huge and noisy) and the prompt length that will be piped to stdin.
-  const displayArgs = args.map((a, i) =>
-    args[i - 1] === '--json-schema' ? `'<schema:${a.length}b>'` : a,
-  );
-  const startedAt = Date.now();
-  tee(`${DIM}$ ${BOLD}${CYAN}claude${RESET}${DIM} ${displayArgs.join(' ')}${RESET}\r\n`);
-  tee(`${DIM}  (prompt piped via stdin, ${composed.length} chars)${RESET}\r\n`);
-
-  return await new Promise((resolve, reject) => {
-    const proc = spawn(bin, args, {
-      env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    const timeoutMs = 180_000;
-    const timer = setTimeout(() => {
-      proc.kill('SIGTERM');
-      tee(`${RED}[timeout after ${timeoutMs / 1000}s — SIGTERM sent]${RESET}\r\n`);
-      reject(new Error(`claude -p timed out after ${timeoutMs / 1000}s`));
-    }, timeoutMs);
-    proc.stdout.on('data', (d) => {
-      const s = d.toString();
-      stdout += s;
-      tee(s);
-    });
-    proc.stderr.on('data', (d) => {
-      const s = d.toString();
-      stderr += s;
-      // dim stderr so it visually separates from stdout in the terminal
-      tee(`${DIM}${s}${RESET}`);
-    });
-    proc.on('error', (e) => {
-      clearTimeout(timer);
-      tee(`${RED}[spawn error: ${e.message}]${RESET}\r\n`);
-      reject(e);
-    });
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      const dur = Date.now() - startedAt;
-      tee(
-        `\r\n${DIM}[exit ${code} · ${dur}ms]${RESET}\r\n\r\n`,
-      );
-      if (code !== 0) {
-        reject(
-          new Error(
-            `claude -p exited with code ${code}.\nstderr: ${stderr.slice(0, 1000)}\nstdout: ${stdout.slice(0, 1000)}`,
-          ),
-        );
-        return;
-      }
-      try {
-        const payload = JSON.parse(stdout);
-        if (payload.is_error) {
-          reject(new Error(`claude error: ${payload.result ?? 'unknown'}`));
-          return;
-        }
-        resolve({
-          text: typeof payload.result === 'string' ? payload.result : '',
-          parsed: payload.structured_output,
-          meta: {
-            durationMs: payload.duration_ms,
-            sessionId: payload.session_id,
-            costUsd: payload.total_cost_usd,
-          },
-        });
-      } catch (e) {
-        reject(
-          new Error(
-            `failed to parse claude output: ${(e as Error).message}\nstdout (head): ${stdout.slice(0, 500)}`,
-          ),
-        );
-      }
-    });
-    proc.stdin.write(composed);
-    proc.stdin.end();
+  const result = await runExec({
+    cmd: [bin, ...args],
+    env: req.envVars, // only the user-specified vars; inherited env matches their shell
+    stdin: composed,
+    sessionId: req.sessionId,
+    timeoutMs: 180_000,
   });
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `claude -p exited with code ${result.exitCode}.\n` +
+        `stderr: ${result.stderr.slice(0, 1000)}\n` +
+        `stdout: ${result.stdout.slice(0, 1000)}`,
+    );
+  }
+  try {
+    const payload = JSON.parse(result.stdout);
+    if (payload.is_error) {
+      throw new Error(`claude error: ${payload.result ?? 'unknown'}`);
+    }
+    return {
+      text: typeof payload.result === 'string' ? payload.result : '',
+      parsed: payload.structured_output,
+      meta: {
+        durationMs: payload.duration_ms,
+        sessionId: payload.session_id,
+        costUsd: payload.total_cost_usd,
+      },
+    };
+  } catch (e) {
+    throw new Error(
+      `failed to parse claude output: ${(e as Error).message}\nstdout (head): ${result.stdout.slice(0, 500)}`,
+    );
+  }
 });
 
 app.whenReady().then(() => {
