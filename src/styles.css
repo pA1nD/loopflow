@@ -458,4 +458,130 @@ kbd {
   flex: 1;
   background: var(--paper);
   overflow: auto;
+  padding: 16px 18px;
+}
+
+.datastore-empty {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 64px 0;
+  color: var(--muted);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+  border-left: 1px solid var(--line);
+}
+
+.data-table thead th {
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.field-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+}
+
+.field-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 4px;
+  min-width: 60px;
+}
+
+.field-name:hover,
+.field-name:focus {
+  background: var(--hover);
+}
+
+.field-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.field-type:hover {
+  background: var(--hover);
+}
+
+.field-delete,
+.row-delete {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.field-delete:hover,
+.row-delete:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.cell-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.cell-input:focus {
+  background: var(--hover);
+}
+
+td input[type='checkbox'] {
+  margin: 6px 8px;
+}
+
+.row-num {
+  width: 36px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px 0;
+}
+
+.col-actions {
+  width: 32px;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.muted {
+  color: var(--muted);
+  text-align: center;
+  padding: 12px;
 }
