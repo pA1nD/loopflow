@@ -76,4 +76,7 @@ export interface AppState {
   // Right-side Runs panel toggle. Mutually exclusive with the inspector
   // only when a card is also selected — both can be open together.
   runsPanel: boolean;
+  // Right-side Terminal panel toggle. Mutex with inspector/runs (one right
+  // panel at a time).
+  terminalPanel: boolean;
 }

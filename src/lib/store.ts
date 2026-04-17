@@ -21,6 +21,7 @@ function emptyState(): AppState {
     view: 'canvas',
     selectedCardId: null,
     runsPanel: false,
+    terminalPanel: false,
   };
 }
 
@@ -134,19 +135,28 @@ export const actions = {
   },
   setSelectedCard(cardId: string | null) {
     // Right side hosts at most one panel at a time — opening the inspector
-    // (by selecting a card) closes the runs panel.
+    // (by selecting a card) closes runs and terminal.
     commit({
       ...state,
       selectedCardId: cardId,
       runsPanel: cardId ? false : state.runsPanel,
+      terminalPanel: cardId ? false : state.terminalPanel,
     });
   },
   setRunsPanel(open: boolean) {
     commit({
       ...state,
       runsPanel: open,
-      // Same rule the other way: opening runs deselects the active card.
       selectedCardId: open ? null : state.selectedCardId,
+      terminalPanel: open ? false : state.terminalPanel,
+    });
+  },
+  setTerminalPanel(open: boolean) {
+    commit({
+      ...state,
+      terminalPanel: open,
+      selectedCardId: open ? null : state.selectedCardId,
+      runsPanel: open ? false : state.runsPanel,
     });
   },
 

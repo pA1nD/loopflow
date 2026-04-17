@@ -42,6 +42,58 @@ ipcMain.handle('storage:write', async (_event, payload: unknown) => {
   return { ok: true };
 });
 
+// ---------- terminal sessions ----------
+// One in-memory session per canvas. We tee stdout/stderr of the existing
+// llm:call spawn into the session, plus a synthetic header/footer so the
+// renderer can see the exact command, its output, and the exit code as it
+// happens. No PTY: the claude command runs in the same pipe mode as
+// before, which keeps the structured JSON parse working.
+
+interface TerminalSession {
+  id: string;
+  buffer: string;
+}
+
+const TERM_BUFFER_CAP = 512 * 1024; // 512KB per session; oldest bytes dropped
+const sessions = new Map<string, TerminalSession>();
+
+function getSession(id: string): TerminalSession {
+  let s = sessions.get(id);
+  if (!s) {
+    s = { id, buffer: '' };
+    sessions.set(id, s);
+  }
+  return s;
+}
+
+function appendSession(id: string, chunk: string) {
+  const s = getSession(id);
+  s.buffer += chunk;
+  if (s.buffer.length > TERM_BUFFER_CAP) {
+    s.buffer = s.buffer.slice(-TERM_BUFFER_CAP);
+  }
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('loopflow:term:data', { id, chunk });
+  }
+}
+
+ipcMain.handle('loopflow:term:get-buffer', (_e, id: string) => getSession(id).buffer);
+ipcMain.handle('loopflow:term:clear', (_e, id: string) => {
+  const s = getSession(id);
+  s.buffer = '';
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('loopflow:term:clear', { id });
+  }
+});
+
+// Small ANSI helpers for the synthetic header/footer. xterm.js renders
+// these natively, so we don't need an ANSI parser — we just emit codes.
+const DIM = '\x1b[2m';
+const BOLD = '\x1b[1m';
+const CYAN = '\x1b[36m';
+const RED = '\x1b[31m';
+const RESET = '\x1b[0m';
+
 function createWindow() {
   // Expose the state path + headless flag to the preload via process env
   // so preload can sync-read the file before the renderer starts.
@@ -120,6 +172,10 @@ interface LlmCall {
   skill?: string;
   envVars?: Record<string, string>;
   schema?: string;
+  // Optional session id (the canvas the card lives on). When present, the
+  // spawn's stdout/stderr is teed into this terminal session so the
+  // renderer can display the live execution.
+  sessionId?: string;
 }
 
 function composePrompt(prompt: string, skill: string | undefined): string {
@@ -139,6 +195,20 @@ ipcMain.handle('llm:call', async (_event, req: LlmCall) => {
   const env = { ...process.env, ...(req.envVars ?? {}) };
   const composed = composePrompt(req.prompt, req.skill);
 
+  const sid = req.sessionId;
+  const tee = (chunk: string) => {
+    if (sid) appendSession(sid, chunk);
+  };
+
+  // Header: show the actual command line (schema elided because it can be
+  // huge and noisy) and the prompt length that will be piped to stdin.
+  const displayArgs = args.map((a, i) =>
+    args[i - 1] === '--json-schema' ? `'<schema:${a.length}b>'` : a,
+  );
+  const startedAt = Date.now();
+  tee(`${DIM}$ ${BOLD}${CYAN}claude${RESET}${DIM} ${displayArgs.join(' ')}${RESET}\r\n`);
+  tee(`${DIM}  (prompt piped via stdin, ${composed.length} chars)${RESET}\r\n`);
+
   return await new Promise((resolve, reject) => {
     const proc = spawn(bin, args, {
       env,
@@ -149,16 +219,31 @@ ipcMain.handle('llm:call', async (_event, req: LlmCall) => {
     const timeoutMs = 180_000;
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
+      tee(`${RED}[timeout after ${timeoutMs / 1000}s — SIGTERM sent]${RESET}\r\n`);
       reject(new Error(`claude -p timed out after ${timeoutMs / 1000}s`));
     }, timeoutMs);
-    proc.stdout.on('data', (d) => (stdout += d.toString()));
-    proc.stderr.on('data', (d) => (stderr += d.toString()));
+    proc.stdout.on('data', (d) => {
+      const s = d.toString();
+      stdout += s;
+      tee(s);
+    });
+    proc.stderr.on('data', (d) => {
+      const s = d.toString();
+      stderr += s;
+      // dim stderr so it visually separates from stdout in the terminal
+      tee(`${DIM}${s}${RESET}`);
+    });
     proc.on('error', (e) => {
       clearTimeout(timer);
+      tee(`${RED}[spawn error: ${e.message}]${RESET}\r\n`);
       reject(e);
     });
     proc.on('close', (code) => {
       clearTimeout(timer);
+      const dur = Date.now() - startedAt;
+      tee(
+        `\r\n${DIM}[exit ${code} · ${dur}ms]${RESET}\r\n\r\n`,
+      );
       if (code !== 0) {
         reject(
           new Error(

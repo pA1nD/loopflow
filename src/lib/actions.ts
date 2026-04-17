@@ -55,6 +55,7 @@ interface LlmRequest {
   skill?: string;
   envVars?: Record<string, string>;
   schema?: string;
+  sessionId?: string;
 }
 
 interface LlmResponse {
@@ -71,6 +72,12 @@ declare global {
       storage?: {
         initialState?: unknown;
         write?: (data: unknown) => Promise<unknown>;
+      };
+      terminal?: {
+        getBuffer: (id: string) => Promise<string>;
+        clear: (id: string) => Promise<void>;
+        onData: (cb: (p: { id: string; chunk: string }) => void) => () => void;
+        onClear: (cb: (p: { id: string }) => void) => () => void;
       };
     };
   }
@@ -165,7 +172,13 @@ const llm: ActionType = {
     ctx.log(
       `llm: calling claude -p skill="${skill ?? ''}" fields=[${fields.map((f) => f.name).join(',')}]`,
     );
-    const response = await invokeLlm({ prompt, skill, envVars, schema });
+    const response = await invokeLlm({
+      prompt,
+      skill,
+      envVars,
+      schema,
+      sessionId: ctx.canvasId,
+    });
 
     let parsed = response.parsed;
     if (parsed === undefined) {

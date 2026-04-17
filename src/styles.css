@@ -900,6 +900,48 @@ textarea::placeholder {
   font: inherit;
 }
 
+/* ---------- terminal panel ---------- */
+
+.terminal-panel {
+  width: 520px;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
+  animation: panel-in 220ms var(--ease);
+}
+
+.terminal-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.terminal-panel-actions {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-3);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+}
+
+.terminal-host .xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
 /* ---------- main ---------- */
 
 .main {
