@@ -93,20 +93,32 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     [canvas.cards],
   );
 
-  // Latest-run map (cardId -> { status, durationMs }) derived from the
-  // system runs datamodel. Used to color the card's status dot.
+  // Latest-run map (cardId -> { status, startedAtMs }) derived from the
+  // system runs datamodel. Used to color the card's status dot and briefly
+  // pulse it when a run finished moments ago.
   const lastRunByCard = useMemo(() => {
     const runs = state.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
-    if (!runs) return new Map<string, string>();
+    if (!runs) return new Map<string, { status: string; startedAt: number }>();
     const cardIdField = runs.fields.find((f) => f.name === 'cardId')?.id;
     const statusField = runs.fields.find((f) => f.name === 'status')?.id;
+    const startedAtField = runs.fields.find((f) => f.name === 'startedAt')?.id;
     if (!cardIdField || !statusField) return new Map();
-    const map = new Map<string, string>();
+    const map = new Map<string, { status: string; startedAt: number }>();
     for (const row of runs.rows) {
-      map.set(String(row[cardIdField]), String(row[statusField]));
+      const id = String(row[cardIdField]);
+      const status = String(row[statusField]);
+      const ts = startedAtField ? Date.parse(String(row[startedAtField])) : 0;
+      map.set(id, { status, startedAt: Number.isFinite(ts) ? ts : 0 });
     }
     return map;
   }, [state.datamodels]);
+
+  // Tick every second so the "just ran" pulse class drops off naturally.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const extent = useMemo(() => {
     const maxX = canvas.cards.reduce((m, c) => Math.max(m, c.x + CARD_W), 0);
@@ -367,7 +379,9 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
         {canvas.cards.map((card) => {
           const action = getAction(card.kind);
           const selected = state.selectedCardId === card.id;
-          const status = lastRunByCard.get(card.id) ?? '';
+          const recent = lastRunByCard.get(card.id);
+          const status = recent?.status ?? '';
+          const justRan = recent && now - recent.startedAt < 3000;
           return (
             <div
               key={card.id}
@@ -390,7 +404,12 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
                 <span className="card-kind-label" data-testid={`card-kind-${card.id}`}>
                   {action?.label ?? card.kind}
                 </span>
-                {status && <span className={`card-status card-status-${status}`} title={`last run: ${status}`} />}
+                {status && (
+                  <span
+                    className={`card-status card-status-${status} ${justRan ? 'card-status-pulse' : ''}`}
+                    title={`last run: ${status}`}
+                  />
+                )}
                 <button
                   className="card-delete"
                   data-no-drag
@@ -427,8 +446,12 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
         })}
       </div>
         {canvas.cards.length === 0 && (
-          <div className="canvas-hint">
-            click <kbd>card</kbd> or <kbd>trigger</kbd> in the toolbar to start
+          <div className="canvas-hint" data-testid="canvas-hint">
+            <div className="canvas-hint-arrow">↑</div>
+            <div className="canvas-hint-title">empty canvas</div>
+            <div className="canvas-hint-body">
+              pick a <kbd>trigger</kbd>, <kbd>llm</kbd>, or <kbd>sink</kbd> from the toolbar
+            </div>
           </div>
         )}
       </div>
