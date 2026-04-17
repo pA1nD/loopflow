@@ -99,6 +99,11 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [connect, setConnect] = useState<ConnectState | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  // Tracks whether the mouse has moved meaningfully since placing started.
+  // Set on mousemove, reset on startConnect. Refs so the connect effect
+  // doesn't need to re-register on every pointer tick.
+  const connectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const connectMovedRef = useRef<boolean>(false);
 
   const cardById = useCallback(
     (id: string) => canvas.cards.find((c) => c.id === id),
@@ -184,15 +189,19 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     if (!content) return;
     const onMove = (e: MouseEvent) => {
       const rect = content.getBoundingClientRect();
-      setConnect((prev) =>
-        prev ? { ...prev, cursorX: e.clientX - rect.left, cursorY: e.clientY - rect.top } : prev,
-      );
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const start = connectStartRef.current;
+      if (start && Math.abs(x - start.x) + Math.abs(y - start.y) > 6) {
+        connectMovedRef.current = true;
+      }
+      setConnect((prev) => (prev ? { ...prev, cursorX: x, cursorY: y } : prev));
     };
-    const onResolve = (e: MouseEvent) => {
+    const resolveAt = (clientX: number, clientY: number) => {
       const rect = content.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const localY = e.clientY - rect.top;
-      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const el = document.elementFromPoint(clientX, clientY);
       const cardEl = el?.closest('[data-card-id]') as HTMLElement | null;
       const targetId = cardEl?.dataset.cardId;
       if (targetId === connect.fromCardId) {
@@ -218,6 +227,15 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
       }
       setConnect(null);
     };
+    // Next mousedown (not the opening one — the opening press happened
+    // before this effect registered, so it's never seen) resolves.
+    const onMouseDown = (e: MouseEvent) => resolveAt(e.clientX, e.clientY);
+    // Mouseup resolves ONLY if the user actually dragged — a plain tap
+    // should stay in click-to-place mode.
+    const onMouseUp = (e: MouseEvent) => {
+      if (!connectMovedRef.current) return;
+      resolveAt(e.clientX, e.clientY);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setConnect(null);
     };
@@ -225,11 +243,13 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     // Capture phase: runs before the target's handlers (including a port's
     // own onMouseDown) so e.stopPropagation() on the target cannot swallow
     // the resolution.
-    window.addEventListener('mousedown', onResolve, true);
+    window.addEventListener('mousedown', onMouseDown, true);
+    window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mousedown', onResolve, true);
+      window.removeEventListener('mousedown', onMouseDown, true);
+      window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', onKey);
     };
   }, [connect, canvas.id, canvas.cards]);
@@ -270,11 +290,11 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     const content = contentRef.current;
     if (!content) return;
     const rect = content.getBoundingClientRect();
-    setConnect({
-      fromCardId: card.id,
-      cursorX: e.clientX - rect.left,
-      cursorY: e.clientY - rect.top,
-    });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    connectStartRef.current = { x, y };
+    connectMovedRef.current = false;
+    setConnect({ fromCardId: card.id, cursorX: x, cursorY: y });
   };
 
   const addCardOfKind = (kind: string, defaults: Record<string, unknown> = {}) => {
