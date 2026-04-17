@@ -225,7 +225,7 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     });
   };
 
-  const addCard = () => {
+  const addCardOfKind = (kind: string, defaults: Record<string, unknown> = {}) => {
     const scroll = scrollRef.current;
     const scrollX = scroll?.scrollLeft ?? 0;
     const scrollY = scroll?.scrollTop ?? 0;
@@ -234,22 +234,56 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
     const anchorY =
       canvas.cards.length === 0 ? snap(scrollY + 80) : Math.min(...canvas.cards.map((c) => c.y));
     const slot = findOpenSlot(canvas.cards, anchorX, anchorY, extent.width);
-    const newCard = actions.addCard(canvas.id, slot);
+    const newCard = actions.addCard(canvas.id, {
+      ...slot,
+      kind,
+      params: defaults,
+    });
     actions.setSelectedCard(newCard.id);
   };
 
   return (
-    <div
-      className={`canvas-scroll ${connect ? 'is-connecting' : ''}`}
-      ref={scrollRef}
-      data-testid="canvas-stage"
-      onMouseDown={(e) => {
-        if (e.target === scrollRef.current || e.target === contentRef.current) {
-          actions.setSelectedCard(null);
-          setSelectedEdge(null);
-        }
-      }}
-    >
+    <div className="canvas-area">
+      <nav className="canvas-toolbar" data-testid="canvas-toolbar">
+        <button
+          className="toolbar-btn"
+          onClick={() => addCardOfKind('llm')}
+          data-testid="add-card"
+          title="add card"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="4" y="5" width="16" height="14" rx="2" />
+            <line x1="8" y1="10" x2="16" y2="10" />
+            <line x1="8" y1="14" x2="14" y2="14" />
+          </svg>
+          <span>card</span>
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={() =>
+            addCardOfKind('interval-trigger', { intervalSeconds: 3600, enabled: false })
+          }
+          data-testid="add-trigger"
+          title="add trigger"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15 14" />
+          </svg>
+          <span>trigger</span>
+        </button>
+      </nav>
+      <div
+        className={`canvas-scroll ${connect ? 'is-connecting' : ''}`}
+        ref={scrollRef}
+        data-testid="canvas-stage"
+        onMouseDown={(e) => {
+          if (e.target === scrollRef.current || e.target === contentRef.current) {
+            actions.setSelectedCard(null);
+            setSelectedEdge(null);
+          }
+        }}
+      >
       <div
         className="canvas-content"
         ref={contentRef}
@@ -380,19 +414,12 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
           );
         })}
       </div>
-      <button
-        className="stage-fab"
-        onClick={addCard}
-        data-testid="add-card"
-        title="add card"
-      >
-        + card
-      </button>
-      {canvas.cards.length === 0 && (
-        <div className="canvas-hint">
-          click <kbd>+ card</kbd> to add your first node
-        </div>
-      )}
+        {canvas.cards.length === 0 && (
+          <div className="canvas-hint">
+            click <kbd>card</kbd> or <kbd>trigger</kbd> in the toolbar to start
+          </div>
+        )}
+      </div>
     </div>
   );
 }

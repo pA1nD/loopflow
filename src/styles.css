@@ -466,6 +466,52 @@ select {
 
 /* ---------- canvas stage (scrollable) ---------- */
 
+.canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.canvas-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow-lg);
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.toolbar-btn svg {
+  color: var(--muted);
+}
+
+.toolbar-btn:hover {
+  background: var(--hover);
+}
+
+.toolbar-btn:hover svg {
+  color: var(--fg);
+}
+
 .canvas-scroll {
   flex: 1;
   position: relative;
@@ -532,27 +578,6 @@ select {
   place-items: center;
   color: var(--muted);
   pointer-events: none;
-}
-
-/* Floating action button inside the stage viewport — sticks on top
-   while the content scrolls underneath. */
-.stage-fab {
-  position: sticky;
-  /* sticky inside scrolling container: top = viewport offset */
-  position: absolute;
-  top: 14px;
-  left: 16px;
-  z-index: 2;
-  background: var(--paper);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 6px 12px;
-  box-shadow: var(--shadow-lg);
-  font-size: 12px;
-}
-
-.stage-fab:hover {
-  background: var(--hover);
 }
 
 /* ---------- cards ---------- */

@@ -11,7 +11,11 @@ interface RunResult {
   error?: string;
 }
 
-async function runSingle(card: Card, upstreamOutput: unknown): Promise<RunResult> {
+async function runSingle(
+  canvasId: string,
+  card: Card,
+  upstreamOutput: unknown,
+): Promise<RunResult> {
   const action = getAction(card.kind);
   if (!action?.run) {
     // Nodes without a run fn (pure labels) are transparent — they pass their
@@ -25,12 +29,17 @@ async function runSingle(card: Card, upstreamOutput: unknown): Promise<RunResult
   let status: 'ok' | 'error' = 'ok';
   try {
     output = await action.run({
+      canvasId,
+      cardId: card.id,
       params: card.params ?? {},
       input: upstreamOutput,
       now: () => Date.now(),
       log: (msg) => console.info(`[${card.kind}] ${msg}`),
       getDatamodel: (modelId) => getState().datamodels.find((m) => m.id === modelId),
+      findDatamodelByName: (name) => getState().datamodels.find((m) => m.name === name),
       appendRow: (modelId, values) => storeActions.appendRowByFieldName(modelId, values),
+      createDatamodelFromRows: (name, rows) => storeActions.createDatamodelFromRows(name, rows),
+      setOwnParam: (name, value) => storeActions.updateCardParam(canvasId, card.id, name, value),
     });
   } catch (e) {
     status = 'error';
@@ -78,13 +87,17 @@ export async function runFromCard(canvasId: string, cardId: string): Promise<voi
 }
 
 async function walk(canvas: Canvas, card: Card, input: unknown): Promise<void> {
-  const result = await runSingle(card, input);
+  const result = await runSingle(canvas.id, card, input);
   if (result.status === 'error') return; // stop this branch on error
-  const outgoing = canvas.edges.filter((e) => e.from === card.id);
+  // Re-read canvas state in case the node mutated it (e.g. LLM action
+  // auto-creating a datamodel + updating its own datamodelId param).
+  const fresh = getState().canvases.find((c) => c.id === canvas.id);
+  if (!fresh) return;
+  const outgoing = fresh.edges.filter((e) => e.from === card.id);
   for (const edge of outgoing) {
-    const next = canvas.cards.find((c) => c.id === edge.to);
+    const next = fresh.cards.find((c) => c.id === edge.to);
     if (!next) continue;
-    await walk(canvas, next, result.output);
+    await walk(fresh, next, result.output);
   }
 }
 

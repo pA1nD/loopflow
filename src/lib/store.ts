@@ -8,6 +8,7 @@ import type {
   Field,
   FieldType,
 } from './types';
+import { inferFieldsFromRows } from './actions';
 
 const STORAGE_KEY = 'loopflow:state:v1';
 
@@ -350,6 +351,24 @@ export const actions = {
         m.id === modelId ? { ...m, rows: m.rows.filter((_, i) => i !== rowIndex) } : m,
       ),
     });
+  },
+
+  // Create a datamodel with a schema inferred from the first row's keys
+  // and types. Used by actions that auto-create a target when the user
+  // leaves their datamodel param empty.
+  createDatamodelFromRows(name: string, rows: Array<Record<string, unknown>>): Datamodel {
+    const fieldDefs = inferFieldsFromRows(rows);
+    const model: Datamodel = {
+      id: id(),
+      name,
+      fields: fieldDefs.map((f) => ({ id: id(), name: f.name, type: f.type })),
+      rows: [],
+    };
+    commit({
+      ...state,
+      datamodels: [...state.datamodels, model],
+    });
+    return model;
   },
 
   // Append a row using field NAMES rather than ids. Fields not present on

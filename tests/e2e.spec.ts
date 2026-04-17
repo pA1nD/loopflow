@@ -17,6 +17,9 @@ test.beforeEach(async () => {
       // Keeps the Electron window offscreen + never focused so running the
       // suite doesn't interrupt whatever the user is doing.
       LOOPFLOW_HEADLESS: '1',
+      // Force the LLM action to return a deterministic fixture so tests
+      // never need real API credentials.
+      LOOPFLOW_MOCK_LLM: '1',
     },
   });
   page = await app.firstWindow();
@@ -288,62 +291,68 @@ test('each datamodel exposes a table where data can be entered', async () => {
 // ---------- orchestration flow ----------
 
 /**
- * Shared builder for the orchestration test. Returns the ids the flow tests
- * need so the "setup" and "execute" specs can each assert on the same shape.
+ * Shared builder: uses the top-center toolbar (+ trigger, + card) to place
+ * the nodes, then the right-side inspector to configure each. Returns the
+ * persisted state so individual tests can assert on whatever shape matters.
+ *
+ * The `llm` action is configured with a skill that the fixture recognizes
+ * (`last30days`) so the mock returns findings rows. `datamodelName` below
+ * determines where the auto-created or pre-existing datamodel ends up.
  */
-async function buildInterval30dayFlow(topic: string, datamodelName: string) {
-  // Pre-create the target datamodel with fields matching the last30days
-  // output schema. The datastore-append action writes rows by field NAME,
-  // so these names must line up with the fixture keys (topic, finding,
-  // source, score).
-  await page.getByTestId('nav-datastore').click();
-  await page.getByTestId('create-first-datamodel').click();
-  await page.getByTestId('datamodel-name').fill(datamodelName);
+async function buildResearchLoop(
+  topic: string,
+  datamodelName: string,
+  opts: { precreateDatamodel?: boolean } = {},
+) {
+  if (opts.precreateDatamodel) {
+    await page.getByTestId('nav-datastore').click();
+    await page.getByTestId('create-first-datamodel').click();
+    await page.getByTestId('datamodel-name').fill(datamodelName);
 
-  const addNamedField = async (name: string, type?: 'string' | 'number') => {
-    await page.getByTestId('add-field').click();
-    const state = await page.evaluate(() => window.__loopflow?.getState());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const model = (state as any).datamodels.find((m: any) => m.name === datamodelName);
-    const fid = model.fields[model.fields.length - 1].id;
-    await page.getByTestId(`field-name-${fid}`).fill(name);
-    if (type === 'number') await page.getByTestId(`field-type-${fid}`).selectOption('number');
-  };
-  await addNamedField('topic');
-  await addNamedField('finding');
-  await addNamedField('source');
-  await addNamedField('score', 'number');
+    const addNamedField = async (name: string, type?: 'string' | 'number') => {
+      await page.getByTestId('add-field').click();
+      const state = await page.evaluate(() => window.__loopflow?.getState());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const model = (state as any).datamodels.find((m: any) => m.name === datamodelName);
+      const fid = model.fields[model.fields.length - 1].id;
+      await page.getByTestId(`field-name-${fid}`).fill(name);
+      if (type === 'number') await page.getByTestId(`field-type-${fid}`).selectOption('number');
+    };
+    await addNamedField('topic');
+    await addNamedField('finding');
+    await addNamedField('source');
+    await addNamedField('score', 'number');
+  }
 
-  // Build the canvas: interval-trigger -> last30days -> datastore-append
   await page.getByTestId('nav-canvas').click();
-  await page.getByTestId('create-first-canvas').click();
+  if (!(await page.getByTestId('canvas-stage').isVisible().catch(() => false))) {
+    await page.getByTestId('create-first-canvas').click();
+  }
   await page.getByTestId('canvas-name').fill('research loop');
 
-  const addAndConfigure = async (kind: string, configure: () => Promise<void>) => {
-    await page.getByTestId('add-card').click();
-    // The just-added card is now selected; the inspector is open.
-    await page.getByTestId('inspector-kind').selectOption(kind);
-    await configure();
-  };
+  // Place the trigger via the toolbar's dedicated + trigger button.
+  await page.getByTestId('add-trigger').click();
+  await page.getByTestId('param-intervalSeconds').fill('60');
+  const enabled = page.getByTestId('param-enabled');
+  if (!(await enabled.isChecked())) await enabled.check();
 
-  await addAndConfigure('interval-trigger', async () => {
-    await page.getByTestId('param-intervalSeconds').fill('60');
-    const enabled = page.getByTestId('param-enabled');
-    if (!(await enabled.isChecked())) await enabled.check();
-  });
-
-  await addAndConfigure('last30days', async () => {
-    await page.getByTestId('param-topic').fill(topic);
-  });
-
-  await addAndConfigure('datastore-append', async () => {
+  // Place the LLM action via the + card button (default kind is 'llm').
+  await page.getByTestId('add-card').click();
+  await expect(page.getByTestId('inspector-kind')).toHaveValue('llm');
+  await page.getByTestId('param-prompt').fill(
+    `Research "${topic}" using the last30days skill.`,
+  );
+  await page.getByTestId('param-skill').fill('last30days');
+  await page.getByTestId('param-envVars').fill('ANTHROPIC_API_KEY=sk-test\nOTHER=1');
+  await page.getByTestId('param-datamodelName').fill(datamodelName);
+  if (opts.precreateDatamodel) {
     const stateAfterCreate = await page.evaluate(() => window.__loopflow?.getState());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const model = (stateAfterCreate as any).datamodels.find((m: any) => m.name === datamodelName);
     await page.getByTestId('param-datamodelId').selectOption(model.id);
-  });
+  }
 
-  // Connect the three cards via the port-drag interaction.
+  // Connect trigger -> llm via the port-drag interaction.
   const connect = async (fromIdx: number, toIdx: number) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const snap = (await page.evaluate(() => window.__loopflow?.getState())) as any;
@@ -369,40 +378,36 @@ async function buildInterval30dayFlow(topic: string, datamodelName: string) {
     );
     await page.mouse.up();
   };
-
   await connect(0, 1);
-  await connect(1, 2);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (await page.evaluate(() => window.__loopflow?.getState())) as any;
 }
 
-test('orchestration flow: build an interval -> last30days -> datastore-append pipeline from scratch', async () => {
-  const state = await buildInterval30dayFlow('react 19', 'findings');
+test('orchestration flow: build a trigger -> llm(last30days) pipeline from scratch', async () => {
+  const state = await buildResearchLoop('react 19', 'findings', { precreateDatamodel: true });
 
-  // Three cards on the canvas, two edges between them, in the expected order.
   const canvas = state.canvases[0];
-  expect(canvas.cards).toHaveLength(3);
-  expect(canvas.edges).toHaveLength(2);
+  expect(canvas.cards).toHaveLength(2);
+  expect(canvas.edges).toHaveLength(1);
   expect(canvas.cards[0].kind).toBe('interval-trigger');
-  expect(canvas.cards[1].kind).toBe('last30days');
-  expect(canvas.cards[2].kind).toBe('datastore-append');
+  expect(canvas.cards[1].kind).toBe('llm');
 
-  // Each node has its params persisted from the inspector.
+  // Trigger params.
   expect(canvas.cards[0].params.intervalSeconds).toBe(60);
   expect(canvas.cards[0].params.enabled).toBe(true);
-  expect(canvas.cards[1].params.topic).toBe('react 19');
+
+  // LLM params — prompt, skill, and a parsed envVars blob.
+  expect(canvas.cards[1].params.prompt).toContain('react 19');
+  expect(canvas.cards[1].params.skill).toBe('last30days');
+  expect(canvas.cards[1].params.envVars).toContain('ANTHROPIC_API_KEY=');
+
+  // Datamodel preselected (test was opts.precreateDatamodel=true).
   const findings = state.datamodels.find((m: { name: string }) => m.name === 'findings');
   expect(findings).toBeTruthy();
-  expect(canvas.cards[2].params.datamodelId).toBe(findings.id);
-
-  // Datamodel has the right shape and is still empty — setup alone should
-  // not execute anything.
-  const fieldNames = findings.fields.map((f: { name: string }) => f.name);
-  expect(fieldNames).toEqual(['topic', 'finding', 'source', 'score']);
+  expect(canvas.cards[1].params.datamodelId).toBe(findings.id);
   expect(findings.rows).toHaveLength(0);
 
-  // The `runs` system datamodel exists and is also empty.
   const runs = state.datamodels.find(
     (m: { name: string; isSystem?: boolean }) => m.isSystem && m.name === 'runs',
   );
@@ -410,11 +415,9 @@ test('orchestration flow: build an interval -> last30days -> datastore-append pi
   expect(runs.rows).toHaveLength(0);
 });
 
-test('orchestration flow: run it, rows land in the target datamodel and runs are logged', async () => {
-  await buildInterval30dayFlow('tailwind 4', 'findings');
+test('orchestration flow: run it — llm writes rows into the target datamodel', async () => {
+  await buildResearchLoop('tailwind 4', 'findings', { precreateDatamodel: true });
 
-  // Fire the trigger from the inspector — selecting the trigger card and
-  // clicking "run now" exercises the same path the scheduler would take.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state0 = (await page.evaluate(() => window.__loopflow?.getState())) as any;
   const triggerId = state0.canvases[0].cards[0].id;
@@ -422,7 +425,6 @@ test('orchestration flow: run it, rows land in the target datamodel and runs are
   await expect(page.getByTestId('inspector')).toBeVisible();
   await page.getByTestId('inspector-run').click();
 
-  // The mock last30days produces 3 findings — wait for them to land.
   await expect
     .poll(
       async () => {
@@ -441,9 +443,7 @@ test('orchestration flow: run it, rows land in the target datamodel and runs are
     (m: { name: string; isSystem?: boolean }) => m.isSystem && m.name === 'runs',
   );
 
-  // Every finding row was written through the field-name mapping and has
-  // the expected per-row shape (topic stable across all rows, score is a
-  // number).
+  // Every row has the expected shape — topic stable, score numeric, etc.
   const fieldsByName = Object.fromEntries(
     findings.fields.map((f: { id: string; name: string }) => [f.name, f.id]),
   );
@@ -454,19 +454,53 @@ test('orchestration flow: run it, rows land in the target datamodel and runs are
     expect(typeof row[fieldsByName.score]).toBe('number');
   }
 
-  // One run record per card in the pipeline (trigger + last30days + sink).
-  expect(runs.rows.length).toBe(3);
-  const runsStatus = (row: Record<string, string>) => {
-    const statusField = runs.fields.find((f: { name: string }) => f.name === 'status').id;
-    return row[statusField];
-  };
-  for (const r of runs.rows) expect(runsStatus(r)).toBe('ok');
+  // Two cards in the pipeline, so two run records (trigger + llm).
+  expect(runs.rows.length).toBe(2);
+  const statusFieldId = runs.fields.find((f: { name: string }) => f.name === 'status').id;
+  for (const r of runs.rows) expect(r[statusFieldId]).toBe('ok');
 
-  // And the user can review them in the datastore — the runs model shows
-  // up in the sidebar with its rows visible in the table.
+  // Review the table in the data view.
   await page.getByTestId('nav-datastore').click();
-  await page.getByTestId(`datamodel-item-${runs.id}`).click();
+  await page.getByTestId(`datamodel-item-${findings.id}`).click();
   await expect(page.getByTestId('data-table')).toBeVisible();
   await expect(page.getByTestId('row-0')).toBeVisible();
   await expect(page.getByTestId('row-2')).toBeVisible();
+});
+
+test('orchestration flow: llm action auto-creates a datamodel when none is selected', async () => {
+  // No preexisting datamodel this time — the LLM action must create one.
+  await buildResearchLoop('bun 2', 'auto findings', { precreateDatamodel: false });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const state0 = (await page.evaluate(() => window.__loopflow?.getState())) as any;
+  expect(state0.datamodels.find((m: any) => m.name === 'auto findings')).toBeUndefined();
+
+  const triggerId = state0.canvases[0].cards[0].id;
+  await page.locator(`[data-card-id="${triggerId}"]`).click();
+  await page.getByTestId('inspector-run').click();
+
+  await expect
+    .poll(
+      async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const s = (await page.evaluate(() => window.__loopflow?.getState())) as any;
+        const m = s.datamodels.find((x: any) => x.name === 'auto findings');
+        return m?.rows.length ?? 0;
+      },
+      { timeout: 5000 },
+    )
+    .toBe(3);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const state = (await page.evaluate(() => window.__loopflow?.getState())) as any;
+  const created = state.datamodels.find((m: any) => m.name === 'auto findings');
+  // Schema inferred from fixture: topic, finding, source (strings), score (number).
+  const names = created.fields.map((f: { name: string }) => f.name).sort();
+  expect(names).toEqual(['finding', 'score', 'source', 'topic']);
+  const scoreField = created.fields.find((f: { name: string }) => f.name === 'score');
+  expect(scoreField.type).toBe('number');
+
+  // The LLM card now remembers the auto-created datamodel id for subsequent runs.
+  const llmCard = state.canvases[0].cards.find((c: any) => c.kind === 'llm');
+  expect(llmCard.params.datamodelId).toBe(created.id);
 });
