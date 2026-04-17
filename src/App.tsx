@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { actions, useAppState, useStorageSync, _resetForTests } from './lib/store';
 import { Sidebar } from './components/Sidebar';
+import { Titlebar } from './components/Titlebar';
 import { CanvasView } from './views/CanvasView';
 import { DatastoreView } from './views/DatastoreView';
 
@@ -17,7 +18,6 @@ export function App() {
   useStorageSync();
   const state = useAppState();
 
-  // Test hook — only used by Playwright. Harmless in normal usage.
   useEffect(() => {
     window.__loopflow = {
       reset: _resetForTests,
@@ -27,26 +27,7 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="titlebar" data-testid="titlebar">
-        <div className="titlebar-spacer" />
-        <div className="titlebar-tabs">
-          <button
-            className={`tab ${state.view === 'canvas' ? 'active' : ''}`}
-            onClick={() => actions.setView('canvas')}
-            data-testid="nav-canvas"
-          >
-            canvas
-          </button>
-          <button
-            className={`tab ${state.view === 'datastore' ? 'active' : ''}`}
-            onClick={() => actions.setView('datastore')}
-            data-testid="nav-datastore"
-          >
-            data
-          </button>
-        </div>
-        <div className="titlebar-spacer" />
-      </header>
+      <Titlebar state={state} />
       <div className="body">
         <Sidebar state={state} />
         <main className="main">
@@ -56,3 +37,5 @@ export function App() {
     </div>
   );
 }
+
+export { actions };

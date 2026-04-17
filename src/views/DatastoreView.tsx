@@ -30,49 +30,38 @@ export function DatastoreView({ state }: Props) {
 
 function DatamodelEditor({ model }: { model: Datamodel }) {
   return (
-    <div className="datastore-area" data-testid="datastore-area">
-      <div className="canvas-header">
-        <input
-          className="canvas-name"
-          value={model.name}
-          onChange={(e) => actions.renameDatamodel(model.id, e.target.value)}
-          data-testid="datamodel-name"
-        />
-        <div className="canvas-actions">
+    <div className="datastore-stage" data-testid="datastore-stage">
+      <div className="stage-toolbar">
+        <button
+          className="ghost"
+          onClick={() => actions.addField(model.id)}
+          data-testid="add-field"
+        >
+          + field
+        </button>
+        <button
+          className="ghost"
+          onClick={() => actions.addRow(model.id)}
+          disabled={model.fields.length === 0}
+          data-testid="add-row"
+        >
+          + row
+        </button>
+      </div>
+
+      {model.fields.length === 0 ? (
+        <div className="datastore-empty">
+          <p>add a field to define this data model.</p>
           <button
-            className="ghost"
+            className="primary"
             onClick={() => actions.addField(model.id)}
-            data-testid="add-field"
+            data-testid="add-field-empty"
           >
             + field
           </button>
-          <button
-            className="ghost"
-            onClick={() => actions.addRow(model.id)}
-            disabled={model.fields.length === 0}
-            data-testid="add-row"
-          >
-            + row
-          </button>
-          <span className="canvas-meta">
-            {model.fields.length} fields · {model.rows.length} rows
-          </span>
         </div>
-      </div>
-
-      <div className="datastore-stage" data-testid="datastore-stage">
-        {model.fields.length === 0 ? (
-          <div className="datastore-empty">
-            <p>add a field to define this data model.</p>
-            <button
-              className="primary"
-              onClick={() => actions.addField(model.id)}
-              data-testid="add-field-empty"
-            >
-              + field
-            </button>
-          </div>
-        ) : (
+      ) : (
+        <div className="data-table-wrap">
           <table className="data-table" data-testid="data-table">
             <thead>
               <tr>
@@ -121,8 +110,8 @@ function DatamodelEditor({ model }: { model: Datamodel }) {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

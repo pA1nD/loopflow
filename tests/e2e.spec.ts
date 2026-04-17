@@ -34,7 +34,7 @@ test.afterEach(async () => {
 test('create a canvas and connect two cards on it', async () => {
   // Create the canvas.
   await page.getByTestId('create-first-canvas').click();
-  await expect(page.getByTestId('canvas-area')).toBeVisible();
+  await expect(page.getByTestId('canvas-stage')).toBeVisible();
   await expect(page.getByTestId('canvas-name')).toHaveValue('untitled flow');
 
   // Add the first card.
@@ -209,7 +209,7 @@ test('create two distinct datamodels', async () => {
   await page.getByTestId('nav-datastore').click();
 
   await page.getByTestId('create-first-datamodel').click();
-  await expect(page.getByTestId('datastore-area')).toBeVisible();
+  await expect(page.getByTestId('datastore-stage')).toBeVisible();
   await page.getByTestId('datamodel-name').fill('users');
 
   // Create the second datamodel via the sidebar.

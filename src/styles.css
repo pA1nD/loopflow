@@ -9,6 +9,7 @@
   --hover: #f1f1f1;
   --selected: #ebeefb;
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
   font-family:
     'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     'Liberation Mono', 'Courier New', monospace;
@@ -39,6 +40,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 input,
 textarea,
 select {
@@ -55,9 +61,11 @@ select {
   height: 100%;
 }
 
+/* ---------- titlebar (name + stats) ---------- */
+
 .titlebar {
   -webkit-app-region: drag;
-  height: 36px;
+  height: 40px;
   display: flex;
   align-items: center;
   padding: 0 80px;
@@ -69,21 +77,75 @@ select {
   flex: 1;
 }
 
-.titlebar-tabs {
+.titlebar-content {
   -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 640px;
+  flex: 0 1 auto;
+}
+
+.titlebar-name {
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.titlebar-name:hover,
+.titlebar-name:focus {
+  background: var(--hover);
+}
+
+.titlebar-meta {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.titlebar-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- body ---------- */
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---------- sidebar ---------- */
+
+.sidebar {
+  width: 220px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.view-toggle {
   display: flex;
   gap: 4px;
   background: #ececec;
   border-radius: 8px;
   padding: 3px;
+  margin: 10px 12px 6px;
 }
 
 .tab {
-  padding: 4px 14px;
+  flex: 1;
+  padding: 5px 10px;
   border-radius: 6px;
   color: var(--muted);
   font-size: 12px;
   border: none;
+  text-align: center;
 }
 
 .tab:hover {
@@ -96,26 +158,18 @@ select {
   box-shadow: var(--shadow);
 }
 
-.body {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-.sidebar {
-  width: 220px;
-  border-right: 1px solid var(--line);
-  background: var(--bg);
+.sidebar-section {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 6px;
+  padding: 8px 14px 4px;
 }
 
 .sidebar-title {
@@ -192,6 +246,8 @@ select {
   background: var(--accent);
 }
 
+/* ---------- main ---------- */
+
 .main {
   flex: 1;
   min-width: 0;
@@ -234,58 +290,6 @@ select {
   opacity: 0.9;
 }
 
-.canvas-area,
-.datastore-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.canvas-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
-}
-
-.canvas-name {
-  flex: 1;
-  font-size: 14px;
-  padding: 4px 6px;
-  border-radius: 4px;
-}
-
-.canvas-name:hover,
-.canvas-name:focus {
-  background: var(--hover);
-}
-
-.canvas-meta {
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-  margin-left: 12px;
-}
-
-.canvas-stage {
-  flex: 1;
-  position: relative;
-  background:
-    radial-gradient(circle at 1px 1px, #e5e5ea 1px, transparent 0) 0 0 / 24px 24px;
-  background-color: var(--paper);
-  overflow: hidden;
-  user-select: none;
-}
-
-.canvas-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .ghost {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
@@ -295,15 +299,30 @@ select {
   background: var(--paper);
 }
 
-.ghost:hover {
+.ghost:hover:not(:disabled) {
   background: var(--hover);
+}
+
+/* ---------- canvas stage (scrollable) ---------- */
+
+.canvas-scroll {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background-color: var(--paper);
+  user-select: none;
+}
+
+.canvas-content {
+  position: relative;
+  background:
+    radial-gradient(circle at 1px 1px, #e5e5ea 1px, transparent 0) 0 0 / 24px 24px;
 }
 
 .canvas-svg {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 0;
+  left: 0;
   pointer-events: none;
 }
 
@@ -341,9 +360,41 @@ select {
   pointer-events: none;
 }
 
-.canvas-stage.is-connecting {
+.canvas-scroll.is-connecting {
   cursor: crosshair;
 }
+
+.canvas-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Floating action button inside the stage viewport — sticks on top
+   while the content scrolls underneath. */
+.stage-fab {
+  position: sticky;
+  /* sticky inside scrolling container: top = viewport offset */
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 2;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+}
+
+.stage-fab:hover {
+  background: var(--hover);
+}
+
+/* ---------- cards ---------- */
 
 .card {
   position: absolute;
@@ -444,15 +495,6 @@ select {
   border-color: var(--accent);
 }
 
-.canvas-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  pointer-events: none;
-}
-
 kbd {
   display: inline-block;
   padding: 1px 6px;
@@ -463,11 +505,23 @@ kbd {
   font-size: 11px;
 }
 
+/* ---------- datastore ---------- */
+
 .datastore-stage {
   flex: 1;
-  background: var(--paper);
   overflow: auto;
-  padding: 16px 18px;
+  background: var(--paper);
+  padding: 16px 18px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stage-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-bottom: 4px;
 }
 
 .datastore-empty {
@@ -476,6 +530,10 @@ kbd {
   gap: 12px;
   padding: 64px 0;
   color: var(--muted);
+}
+
+.data-table-wrap {
+  overflow: auto;
 }
 
 .data-table {

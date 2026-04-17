@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { actions } from '../lib/store';
 import type { AppState, Canvas, Card, CardKind } from '../lib/types';
 
@@ -8,9 +8,12 @@ interface Props {
 
 const CARD_W = 180;
 const CARD_H = 76;
-const GRID = 24;          // matches the dotted background spacing
-const GAP = 48;           // horizontal gap between siblings
-const ROW_GAP = 24;       // vertical gap when wrapping
+const GRID = 24;
+const GAP = 48;
+const ROW_GAP = 24;
+const MIN_CONTENT_W = 2400;
+const MIN_CONTENT_H = 1400;
+const PAD = 400;
 
 const KIND_LABELS: Record<CardKind, string> = {
   prompt: 'prompt',
@@ -22,14 +25,11 @@ const KIND_LABELS: Record<CardKind, string> = {
 
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 
-// Find an unoccupied slot for a new card near an anchor point.
-// Sweeps right first, then wraps down — never returns a spot overlapping
-// an existing card.
 function findOpenSlot(
   cards: Card[],
   anchorX: number,
   anchorY: number,
-  stageW: number,
+  maxX: number,
 ): { x: number; y: number } {
   const step = CARD_W + GAP;
   const rowStep = CARD_H + ROW_GAP;
@@ -42,15 +42,15 @@ function findOpenSlot(
         y + CARD_H > c.y,
     );
 
-  for (let row = 0; row < 12; row++) {
+  for (let row = 0; row < 20; row++) {
     const y = snap(anchorY + row * rowStep);
-    for (let col = 0; col < 12; col++) {
+    for (let col = 0; col < 20; col++) {
       const x = snap(anchorX + col * step);
-      if (x + CARD_W > stageW - 16 && col > 0) break;
+      if (x + CARD_W > maxX - 16 && col > 0) break;
       if (!collides(x, y)) return { x, y };
     }
   }
-  return { x: snap(anchorX), y: snap(anchorY + 12 * rowStep) };
+  return { x: snap(anchorX), y: snap(anchorY + 20 * rowStep) };
 }
 
 export function CanvasView({ state }: Props) {
@@ -89,7 +89,8 @@ interface ConnectState {
 }
 
 function CanvasStage({ canvas }: { canvas: Canvas }) {
-  const stageRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [connect, setConnect] = useState<ConnectState | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
@@ -99,14 +100,24 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
     [canvas.cards],
   );
 
-  // Cursor tracking when dragging or connecting.
+  // Content extends to hold the farthest card plus padding, and never shrinks
+  // below the viewport-sized minimum so a fresh canvas still feels spacious.
+  const extent = useMemo(() => {
+    const maxX = canvas.cards.reduce((m, c) => Math.max(m, c.x + CARD_W), 0);
+    const maxY = canvas.cards.reduce((m, c) => Math.max(m, c.y + CARD_H), 0);
+    return {
+      width: Math.max(MIN_CONTENT_W, maxX + PAD),
+      height: Math.max(MIN_CONTENT_H, maxY + PAD),
+    };
+  }, [canvas.cards]);
+
   useEffect(() => {
     if (!drag && !connect) return;
-    const stage = stageRef.current;
-    if (!stage) return;
+    const content = contentRef.current;
+    if (!content) return;
 
     const onMove = (e: MouseEvent) => {
-      const rect = stage.getBoundingClientRect();
+      const rect = content.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       if (drag) {
@@ -123,29 +134,20 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
 
     const onUp = (e: MouseEvent) => {
       if (connect) {
-        const stageRect = stage.getBoundingClientRect();
-        const localX = e.clientX - stageRect.left;
-        const localY = e.clientY - stageRect.top;
+        const rect = content.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
         const el = document.elementFromPoint(e.clientX, e.clientY);
         const cardEl = el?.closest('[data-card-id]') as HTMLElement | null;
         const targetId = cardEl?.dataset.cardId;
 
         if (targetId && targetId !== connect.fromCardId) {
-          // Dropped onto an existing card → connect.
           actions.addEdge(canvas.id, connect.fromCardId, targetId);
         } else if (!targetId) {
-          // Dropped onto empty canvas → spawn a new connected card here.
           const src = canvas.cards.find((c) => c.id === connect.fromCardId);
           const desiredX = snap(localX - CARD_W / 2);
           const desiredY = snap(localY - CARD_H / 2);
-          const slot = findOpenSlot(
-            canvas.cards,
-            desiredX,
-            desiredY,
-            stageRect.width,
-          );
-          // If we found a spot far from the source, use it; otherwise honor
-          // the drop location (user chose it).
+          const slot = findOpenSlot(canvas.cards, desiredX, desiredY, rect.width);
           const placeX =
             Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3
               ? desiredX
@@ -182,7 +184,6 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
     };
   }, [drag, connect, canvas.id, canvas.cards]);
 
-  // Delete selected edge with backspace/delete.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEdge) {
@@ -196,9 +197,9 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
 
   const startDrag = (card: Card, e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const rect = stage.getBoundingClientRect();
+    const content = contentRef.current;
+    if (!content) return;
+    const rect = content.getBoundingClientRect();
     setDrag({
       cardId: card.id,
       startX: e.clientX - rect.left,
@@ -211,9 +212,9 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
 
   const startConnect = (card: Card, e: React.MouseEvent) => {
     e.stopPropagation();
-    const stage = stageRef.current;
-    if (!stage) return;
-    const rect = stage.getBoundingClientRect();
+    const content = contentRef.current;
+    if (!content) return;
+    const rect = content.getBoundingClientRect();
     setConnect({
       fromCardId: card.id,
       cursorX: e.clientX - rect.left,
@@ -222,39 +223,38 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
   };
 
   const addCard = () => {
-    const stage = stageRef.current;
-    const stageW = stage?.getBoundingClientRect().width ?? 1200;
-    const anchorX = canvas.cards.length === 0 ? 120 : Math.min(...canvas.cards.map((c) => c.x));
-    const anchorY = canvas.cards.length === 0 ? 120 : Math.min(...canvas.cards.map((c) => c.y));
-    const slot = findOpenSlot(canvas.cards, anchorX, anchorY, stageW);
+    const scroll = scrollRef.current;
+    // Anchor new cards near the top-left of the current viewport so you can
+    // see them land even when scrolled far into the canvas.
+    const scrollX = scroll?.scrollLeft ?? 0;
+    const scrollY = scroll?.scrollTop ?? 0;
+    const anchorX =
+      canvas.cards.length === 0 ? snap(scrollX + 80) : Math.min(...canvas.cards.map((c) => c.x));
+    const anchorY =
+      canvas.cards.length === 0 ? snap(scrollY + 80) : Math.min(...canvas.cards.map((c) => c.y));
+    const slot = findOpenSlot(canvas.cards, anchorX, anchorY, extent.width);
     actions.addCard(canvas.id, slot);
   };
 
   return (
-    <div className="canvas-area" data-testid="canvas-area">
-      <div className="canvas-header">
-        <input
-          className="canvas-name"
-          value={canvas.name}
-          onChange={(e) => actions.renameCanvas(canvas.id, e.target.value)}
-          data-testid="canvas-name"
-        />
-        <div className="canvas-actions">
-          <button className="ghost" onClick={addCard} data-testid="add-card">
-            + card
-          </button>
-          <span className="canvas-meta">
-            {canvas.cards.length} cards · {canvas.edges.length} edges
-          </span>
-        </div>
-      </div>
+    <div
+      className={`canvas-scroll ${connect ? 'is-connecting' : ''}`}
+      ref={scrollRef}
+      data-testid="canvas-stage"
+      onMouseDown={() => setSelectedEdge(null)}
+    >
       <div
-        className={`canvas-stage ${connect ? 'is-connecting' : ''}`}
-        ref={stageRef}
-        data-testid="canvas-stage"
-        onMouseDown={() => setSelectedEdge(null)}
+        className="canvas-content"
+        ref={contentRef}
+        style={{ width: extent.width, height: extent.height }}
+        data-testid="canvas-content"
       >
-        <svg className="canvas-svg">
+        <svg
+          className="canvas-svg"
+          width={extent.width}
+          height={extent.height}
+          viewBox={`0 0 ${extent.width} ${extent.height}`}
+        >
           <defs>
             <marker
               id="arrow"
@@ -390,18 +390,26 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
             <div
               className="card-port card-port-out"
               data-no-drag
-              title="drag to connect or to empty space to spawn a new card"
+              title="drag to connect or drop on empty canvas to spawn a new card"
               data-testid={`card-port-${card.id}`}
               onMouseDown={(e) => startConnect(card, e)}
             />
           </div>
         ))}
-        {canvas.cards.length === 0 && (
-          <div className="canvas-hint">
-            click <kbd>+ card</kbd> to add your first node
-          </div>
-        )}
       </div>
+      <button
+        className="stage-fab"
+        onClick={addCard}
+        data-testid="add-card"
+        title="add card"
+      >
+        + card
+      </button>
+      {canvas.cards.length === 0 && (
+        <div className="canvas-hint">
+          click <kbd>+ card</kbd> to add your first node
+        </div>
+      )}
     </div>
   );
 }
