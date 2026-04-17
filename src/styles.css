@@ -1128,7 +1128,10 @@ textarea::placeholder {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-sm);
-  padding: var(--sp-3) var(--sp-4);
+  /* All cards share the same outer padding so the inner text edge is
+     identical across kinds. Per-kind overrides only adjust the radius
+     and accent color. */
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -1202,9 +1205,9 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  margin-top: auto;
+  margin-top: var(--sp-2);
   padding-top: var(--sp-2);
-  border-top: 1px dashed var(--line);
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -1254,20 +1257,18 @@ textarea::placeholder {
 
 /* ---- per-kind shapes ---- */
 
-/* Trigger: pill shape — pill curves inward on the sides, so we need extra
-   horizontal padding so the content doesn't visually clip into the curve. */
+/* Trigger: very rounded but not pill — the previous border-radius:999
+   curved aggressively into the content at top/bottom and made the
+   toggle look glued to the edge. 22px keeps it visually distinct from
+   the action card (14px) without crowding. */
 .card-category-trigger {
-  border-radius: var(--r-pill);
+  border-radius: 22px;
   background: var(--tone-trigger-fill);
   border-color: var(--tone-trigger-line);
-  padding: var(--sp-3) var(--sp-6);
 }
 .card-category-trigger .card-port-in {
   /* Triggers don't accept input — hide the left port. */
   display: none;
-}
-.card-category-trigger .card-port-out {
-  right: -4px;
 }
 
 /* LLM / action: classic rounded rectangle, default. */
@@ -1283,7 +1284,7 @@ textarea::placeholder {
   border-radius: var(--r-xs);
   background: var(--tone-sink-fill);
   border-color: var(--tone-sink-line);
-  padding-top: calc(var(--sp-3) + 4px);
+  padding-top: calc(10px + 4px);
 }
 .card-category-sink::before {
   content: '';
@@ -1304,7 +1305,7 @@ textarea::placeholder {
   letter-spacing: 0.08em;
   color: var(--muted);
   flex: 1;
-  padding: 2px 4px;
+  padding: 0;
   border-radius: 4px;
 }
 
@@ -1332,12 +1333,12 @@ textarea::placeholder {
 .card-summary {
   font-size: 11px;
   color: var(--muted);
-  padding: 0 4px;
+  padding: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .card-header {
@@ -1346,6 +1347,9 @@ textarea::placeholder {
   justify-content: space-between;
   gap: var(--sp-2);
   min-height: 16px;
+  /* Zero side-padding so the header text aligns with the card's
+     content edge (and matches the title input below). */
+  padding: 0;
 }
 
 .card-delete {
@@ -1371,11 +1375,17 @@ textarea::placeholder {
 
 .card-title {
   font-size: 14px;
-  width: 100%;
+  width: calc(100% + 12px);
+  /* Negative margin compensates for the input's internal padding so
+     the visible text starts at the same x as kind-label and summary
+     above/below. The hover/focus background still extends the full
+     interactive width. */
+  margin: 0 -6px;
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-xs);
   font-weight: 500;
   letter-spacing: -0.01em;
+  background: transparent;
 }
 
 .card-title:hover {
