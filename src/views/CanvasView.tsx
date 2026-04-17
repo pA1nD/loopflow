@@ -464,7 +464,12 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
                 width: CARD_W,
                 minHeight: CARD_H,
               }}
-              onMouseDownCapture={() => selectCard(card.id)}
+              onMouseDownCapture={(e) => {
+                // Mousedown on a port is the start of click-to-place — it
+                // shouldn't also open the inspector.
+                if ((e.target as HTMLElement).closest('.card-port')) return;
+                selectCard(card.id);
+              }}
               onMouseDown={(e) => startDrag(card, e)}
             >
               {running && (
