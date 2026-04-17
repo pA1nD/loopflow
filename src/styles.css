@@ -136,7 +136,9 @@ textarea::placeholder {
   height: 40px;
   display: flex;
   align-items: center;
-  padding: 0 80px;
+  /* Left padding clears macOS traffic lights; right is flush so the
+     runs toggle sits at the actual edge of the window. */
+  padding: 0 8px 0 80px;
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
