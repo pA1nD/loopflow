@@ -12,6 +12,12 @@ test.beforeEach(async () => {
   app = await electron.launch({
     args: [repoRoot],
     cwd: repoRoot,
+    env: {
+      ...process.env,
+      // Keeps the Electron window offscreen + never focused so running the
+      // suite doesn't interrupt whatever the user is doing.
+      LOOPFLOW_HEADLESS: '1',
+    },
   });
   page = await app.firstWindow();
   await page.waitForSelector('[data-testid="titlebar"]');
@@ -106,6 +112,40 @@ test('create a canvas and connect two cards on it', async () => {
   const final = await page.evaluate(() => window.__loopflow?.getState());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   expect((final as any).canvases[0].edges).toHaveLength(2);
+});
+
+test('repeatedly adding cards lays them out without overlapping', async () => {
+  await page.getByTestId('create-first-canvas').click();
+  // Five cards is enough to force the layout to advance at least two columns.
+  for (let i = 0; i < 5; i++) {
+    await page.getByTestId('add-card').click();
+  }
+  await expect(page.locator('[data-card-id]')).toHaveCount(5);
+
+  const state = await page.evaluate(() => window.__loopflow?.getState());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cards = (state as any).canvases[0].cards as Array<{ x: number; y: number }>;
+  expect(cards).toHaveLength(5);
+
+  const CARD_W = 180;
+  const CARD_H = 76;
+  for (let i = 0; i < cards.length; i++) {
+    for (let j = i + 1; j < cards.length; j++) {
+      const a = cards[i];
+      const b = cards[j];
+      const overlap =
+        a.x < b.x + CARD_W &&
+        a.x + CARD_W > b.x &&
+        a.y < b.y + CARD_H &&
+        a.y + CARD_H > b.y;
+      expect(overlap, `cards ${i} and ${j} overlap at ${JSON.stringify({ a, b })}`).toBe(false);
+    }
+  }
+  // All positions on the 24px grid.
+  for (const c of cards) {
+    expect(c.x % 24).toBe(0);
+    expect(c.y % 24).toBe(0);
+  }
 });
 
 test('dragging from a port to empty canvas spawns a new connected card', async () => {
