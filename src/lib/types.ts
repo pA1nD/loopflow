@@ -1,11 +1,8 @@
 // Core JSON-backed model for the app.
 
-export type CardKind =
-  | 'prompt'
-  | 'llm'
-  | 'tool'
-  | 'output'
-  | 'note';
+// Open-ended string — the concrete options live in the action registry
+// (src/lib/actions.ts). Kept as a type alias for readability.
+export type CardKind = string;
 
 export interface Card {
   id: string;
@@ -14,12 +11,16 @@ export interface Card {
   body?: string;
   x: number;
   y: number;
+  // Per-node action parameters. Shape is determined by the action type's
+  // paramsSchema — validated at the edge (inspector) rather than at the type
+  // level so new actions can ship without widening the Card interface.
+  params?: Record<string, unknown>;
 }
 
 export interface Edge {
   id: string;
-  from: string; // source card id
-  to: string;   // target card id
+  from: string;
+  to: string;
 }
 
 export interface Canvas {
@@ -41,7 +42,10 @@ export interface Datamodel {
   id: string;
   name: string;
   fields: Field[];
-  rows: Record<string, unknown>[]; // each row keyed by field id
+  rows: Record<string, unknown>[];
+  // System models are owned by the runtime (e.g. `runs`) and cannot be
+  // deleted through the UI.
+  isSystem?: boolean;
 }
 
 export interface AppState {
@@ -50,4 +54,5 @@ export interface AppState {
   datamodels: Datamodel[];
   activeDatamodelId: string | null;
   view: 'canvas' | 'datastore';
+  selectedCardId: string | null;
 }

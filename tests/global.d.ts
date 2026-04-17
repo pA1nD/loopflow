@@ -7,6 +7,8 @@ declare global {
     __loopflow?: {
       reset: () => void;
       getState: () => unknown;
+      runFromCard: (canvasId: string, cardId: string) => Promise<void>;
+      tick: (now?: number) => Promise<void>;
     };
   }
 }

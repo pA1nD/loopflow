@@ -1,7 +1,17 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { AppState, Canvas, Card, Datamodel, Edge, Field, FieldType } from './types';
+import type {
+  AppState,
+  Canvas,
+  Card,
+  Datamodel,
+  Edge,
+  Field,
+  FieldType,
+} from './types';
 
 const STORAGE_KEY = 'loopflow:state:v1';
+
+export const RUNS_MODEL_NAME = 'runs';
 
 function emptyState(): AppState {
   return {
@@ -10,6 +20,7 @@ function emptyState(): AppState {
     datamodels: [],
     activeDatamodelId: null,
     view: 'canvas',
+    selectedCardId: null,
   };
 }
 
@@ -54,8 +65,11 @@ export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+export function getState(): AppState {
+  return state;
+}
+
 export function useStorageSync() {
-  // Re-load if another window/tab modifies storage (Electron typically single-window, defensive).
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
@@ -72,9 +86,35 @@ export function useStorageSync() {
 
 const id = () => Math.random().toString(36).slice(2, 10);
 
+const RUNS_SCHEMA: Field[] = [
+  { id: 'cardId', name: 'cardId', type: 'string' },
+  { id: 'actionType', name: 'actionType', type: 'string' },
+  { id: 'startedAt', name: 'startedAt', type: 'string' },
+  { id: 'durationMs', name: 'durationMs', type: 'number' },
+  { id: 'status', name: 'status', type: 'string' },
+  { id: 'output', name: 'output', type: 'string' },
+  { id: 'error', name: 'error', type: 'string' },
+];
+
+function ensureRunsModel(s: AppState): AppState {
+  const existing = s.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
+  if (existing) return s;
+  const runsModel: Datamodel = {
+    id: id(),
+    name: RUNS_MODEL_NAME,
+    fields: RUNS_SCHEMA,
+    rows: [],
+    isSystem: true,
+  };
+  return { ...s, datamodels: [...s.datamodels, runsModel] };
+}
+
 export const actions = {
   setView(view: AppState['view']) {
     commit({ ...state, view });
+  },
+  setSelectedCard(cardId: string | null) {
+    commit({ ...state, selectedCardId: cardId });
   },
 
   // Canvas
@@ -85,11 +125,17 @@ export const actions = {
       canvases: [...state.canvases, canvas],
       activeCanvasId: canvas.id,
       view: 'canvas',
+      selectedCardId: null,
     });
     return canvas;
   },
   selectCanvas(canvasId: string) {
-    commit({ ...state, activeCanvasId: canvasId, view: 'canvas' });
+    commit({
+      ...state,
+      activeCanvasId: canvasId,
+      view: 'canvas',
+      selectedCardId: null,
+    });
   },
   renameCanvas(canvasId: string, name: string) {
     commit({
@@ -115,6 +161,7 @@ export const actions = {
       body: partial.body ?? '',
       x: partial.x ?? 80 + Math.random() * 200,
       y: partial.y ?? 80 + Math.random() * 200,
+      params: partial.params ?? {},
     };
     commit({
       ...state,
@@ -137,9 +184,27 @@ export const actions = {
       ),
     });
   },
+  updateCardParam(canvasId: string, cardId: string, name: string, value: unknown) {
+    commit({
+      ...state,
+      canvases: state.canvases.map((c) =>
+        c.id === canvasId
+          ? {
+              ...c,
+              cards: c.cards.map((card) =>
+                card.id === cardId
+                  ? { ...card, params: { ...(card.params ?? {}), [name]: value } }
+                  : card,
+              ),
+            }
+          : c,
+      ),
+    });
+  },
   deleteCard(canvasId: string, cardId: string) {
     commit({
       ...state,
+      selectedCardId: state.selectedCardId === cardId ? null : state.selectedCardId,
       canvases: state.canvases.map((c) =>
         c.id === canvasId
           ? {
@@ -176,6 +241,10 @@ export const actions = {
   },
 
   // Datastore
+  ensureSystemModels() {
+    const next = ensureRunsModel(state);
+    if (next !== state) commit(next);
+  },
   createDatamodel(name = 'untitled model'): Datamodel {
     const model: Datamodel = { id: id(), name, fields: [], rows: [] };
     commit({
@@ -196,6 +265,8 @@ export const actions = {
     });
   },
   deleteDatamodel(modelId: string) {
+    const target = state.datamodels.find((m) => m.id === modelId);
+    if (target?.isSystem) return; // system models are protected
     const datamodels = state.datamodels.filter((m) => m.id !== modelId);
     commit({
       ...state,
@@ -277,6 +348,24 @@ export const actions = {
       ...state,
       datamodels: state.datamodels.map((m) =>
         m.id === modelId ? { ...m, rows: m.rows.filter((_, i) => i !== rowIndex) } : m,
+      ),
+    });
+  },
+
+  // Append a row using field NAMES rather than ids. Fields not present on
+  // the datamodel are silently dropped — the datamodel's schema is the
+  // source of truth for what gets persisted.
+  appendRowByFieldName(modelId: string, values: Record<string, unknown>): void {
+    const model = state.datamodels.find((m) => m.id === modelId);
+    if (!model) return;
+    const row: Record<string, unknown> = {};
+    for (const field of model.fields) {
+      if (field.name in values) row[field.id] = values[field.name];
+    }
+    commit({
+      ...state,
+      datamodels: state.datamodels.map((m) =>
+        m.id === modelId ? { ...m, rows: [...m.rows, row] } : m,
       ),
     });
   },

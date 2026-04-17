@@ -80,12 +80,13 @@ function DatastoreList({ state }: Props) {
         {state.datamodels.map((m) => (
           <li
             key={m.id}
-            className={`sidebar-item ${m.id === state.activeDatamodelId ? 'active' : ''}`}
+            className={`sidebar-item ${m.id === state.activeDatamodelId ? 'active' : ''} ${m.isSystem ? 'system' : ''}`}
             onClick={() => actions.selectDatamodel(m.id)}
             data-testid={`datamodel-item-${m.id}`}
           >
             <span className="dot" />
             <span className="sidebar-item-name">{m.name}</span>
+            {m.isSystem && <span className="tag" title="system datamodel">sys</span>}
           </li>
         ))}
       </ul>
