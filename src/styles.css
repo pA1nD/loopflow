@@ -1023,8 +1023,27 @@ textarea::placeholder {
   color: var(--fg);
 }
 
-.toolbar-btn:active {
+.toolbar-btn:active:not(:disabled) {
   transform: scale(0.96);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar-btn:disabled:hover {
+  background: transparent;
+}
+
+/* Hairline separator between live and "coming soon" toolbar groups. */
+.toolbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--line-strong);
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 
 .canvas-scroll {

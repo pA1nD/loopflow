@@ -293,6 +293,48 @@ function CanvasStage({ canvas, state }: { canvas: Canvas; state: AppState }) {
           </svg>
           <span>llm</span>
         </button>
+        <span className="toolbar-divider" />
+        <button
+          className="toolbar-btn"
+          disabled
+          data-testid="add-loop"
+          title="loop — coming soon"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 2l4 4-4 4" />
+            <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+            <path d="M7 22l-4-4 4-4" />
+            <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+          </svg>
+          <span>loop</span>
+        </button>
+        <button
+          className="toolbar-btn"
+          disabled
+          data-testid="add-script"
+          title="script — coming soon"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
+          </svg>
+          <span>script</span>
+        </button>
+        <button
+          className="toolbar-btn"
+          disabled
+          data-testid="add-docker"
+          title="docker — coming soon"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="11" width="4" height="4" />
+            <rect x="7" y="11" width="4" height="4" />
+            <rect x="12" y="11" width="4" height="4" />
+            <rect x="7" y="6" width="4" height="4" />
+            <path d="M2 16c0 3 2 5 7 5h3c5 0 8-2 9-6" />
+          </svg>
+          <span>docker</span>
+        </button>
       </nav>
       <div
         className={`canvas-scroll ${connect ? 'is-connecting' : ''}`}
