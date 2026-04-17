@@ -8,6 +8,9 @@ interface Props {
 
 const CARD_W = 180;
 const CARD_H = 76;
+const GRID = 24;          // matches the dotted background spacing
+const GAP = 48;           // horizontal gap between siblings
+const ROW_GAP = 24;       // vertical gap when wrapping
 
 const KIND_LABELS: Record<CardKind, string> = {
   prompt: 'prompt',
@@ -16,6 +19,39 @@ const KIND_LABELS: Record<CardKind, string> = {
   output: 'output',
   note: 'note',
 };
+
+const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+// Find an unoccupied slot for a new card near an anchor point.
+// Sweeps right first, then wraps down — never returns a spot overlapping
+// an existing card.
+function findOpenSlot(
+  cards: Card[],
+  anchorX: number,
+  anchorY: number,
+  stageW: number,
+): { x: number; y: number } {
+  const step = CARD_W + GAP;
+  const rowStep = CARD_H + ROW_GAP;
+  const collides = (x: number, y: number) =>
+    cards.some(
+      (c) =>
+        x < c.x + CARD_W &&
+        x + CARD_W > c.x &&
+        y < c.y + CARD_H &&
+        y + CARD_H > c.y,
+    );
+
+  for (let row = 0; row < 12; row++) {
+    const y = snap(anchorY + row * rowStep);
+    for (let col = 0; col < 12; col++) {
+      const x = snap(anchorX + col * step);
+      if (x + CARD_W > stageW - 16 && col > 0) break;
+      if (!collides(x, y)) return { x, y };
+    }
+  }
+  return { x: snap(anchorX), y: snap(anchorY + 12 * rowStep) };
+}
 
 export function CanvasView({ state }: Props) {
   const canvas = state.canvases.find((c) => c.id === state.activeCanvasId);
@@ -77,8 +113,8 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
         const dx = x - drag.startX;
         const dy = y - drag.startY;
         actions.updateCard(canvas.id, drag.cardId, {
-          x: Math.max(0, drag.originX + dx),
-          y: Math.max(0, drag.originY + dy),
+          x: Math.max(0, snap(drag.originX + dx)),
+          y: Math.max(0, snap(drag.originY + dy)),
         });
       } else if (connect) {
         setConnect({ ...connect, cursorX: x, cursorY: y });
@@ -87,12 +123,51 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
 
     const onUp = (e: MouseEvent) => {
       if (connect) {
-        // Look for a card under the cursor (other than source).
+        const stageRect = stage.getBoundingClientRect();
+        const localX = e.clientX - stageRect.left;
+        const localY = e.clientY - stageRect.top;
         const el = document.elementFromPoint(e.clientX, e.clientY);
         const cardEl = el?.closest('[data-card-id]') as HTMLElement | null;
         const targetId = cardEl?.dataset.cardId;
+
         if (targetId && targetId !== connect.fromCardId) {
+          // Dropped onto an existing card → connect.
           actions.addEdge(canvas.id, connect.fromCardId, targetId);
+        } else if (!targetId) {
+          // Dropped onto empty canvas → spawn a new connected card here.
+          const src = canvas.cards.find((c) => c.id === connect.fromCardId);
+          const desiredX = snap(localX - CARD_W / 2);
+          const desiredY = snap(localY - CARD_H / 2);
+          const slot = findOpenSlot(
+            canvas.cards,
+            desiredX,
+            desiredY,
+            stageRect.width,
+          );
+          // If we found a spot far from the source, use it; otherwise honor
+          // the drop location (user chose it).
+          const placeX =
+            Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3
+              ? desiredX
+              : slot.x;
+          const placeY =
+            Math.abs(slot.x - desiredX) + Math.abs(slot.y - desiredY) < GRID * 3
+              ? desiredY
+              : slot.y;
+          const kind: CardKind =
+            src?.kind === 'prompt'
+              ? 'llm'
+              : src?.kind === 'llm'
+              ? 'tool'
+              : src?.kind === 'tool'
+              ? 'output'
+              : 'prompt';
+          const newCard = actions.addCard(canvas.id, {
+            x: Math.max(0, placeX),
+            y: Math.max(0, placeY),
+            kind,
+          });
+          actions.addEdge(canvas.id, connect.fromCardId, newCard.id);
         }
         setConnect(null);
       }
@@ -105,9 +180,9 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [drag, connect, canvas.id]);
+  }, [drag, connect, canvas.id, canvas.cards]);
 
-  // Delete selected edge with backspace/delete
+  // Delete selected edge with backspace/delete.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEdge) {
@@ -147,11 +222,12 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
   };
 
   const addCard = () => {
-    // Place new card with slight offset from the last so they don't stack invisibly.
-    const last = canvas.cards[canvas.cards.length - 1];
-    const x = last ? last.x + 40 : 120;
-    const y = last ? last.y + 40 : 120;
-    actions.addCard(canvas.id, { x, y });
+    const stage = stageRef.current;
+    const stageW = stage?.getBoundingClientRect().width ?? 1200;
+    const anchorX = canvas.cards.length === 0 ? 120 : Math.min(...canvas.cards.map((c) => c.x));
+    const anchorY = canvas.cards.length === 0 ? 120 : Math.min(...canvas.cards.map((c) => c.y));
+    const slot = findOpenSlot(canvas.cards, anchorX, anchorY, stageW);
+    actions.addCard(canvas.id, slot);
   };
 
   return (
@@ -173,7 +249,7 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
         </div>
       </div>
       <div
-        className="canvas-stage"
+        className={`canvas-stage ${connect ? 'is-connecting' : ''}`}
         ref={stageRef}
         data-testid="canvas-stage"
         onMouseDown={() => setSelectedEdge(null)}
@@ -241,10 +317,18 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
               const x1 = from.x + CARD_W;
               const y1 = from.y + CARD_H / 2;
               return (
-                <path
-                  className="edge edge-preview"
-                  d={bezier(x1, y1, connect.cursorX, connect.cursorY)}
-                />
+                <g>
+                  <path
+                    className="edge edge-preview"
+                    d={bezier(x1, y1, connect.cursorX, connect.cursorY)}
+                  />
+                  <circle
+                    className="ghost-card"
+                    cx={connect.cursorX}
+                    cy={connect.cursorY}
+                    r={6}
+                  />
+                </g>
               );
             })()}
         </svg>
@@ -306,14 +390,16 @@ function CanvasStage({ canvas }: { canvas: Canvas }) {
             <div
               className="card-port card-port-out"
               data-no-drag
-              title="drag to connect"
+              title="drag to connect or to empty space to spawn a new card"
               data-testid={`card-port-${card.id}`}
               onMouseDown={(e) => startConnect(card, e)}
             />
           </div>
         ))}
         {canvas.cards.length === 0 && (
-          <div className="canvas-hint">click <kbd>+ card</kbd> to add your first node</div>
+          <div className="canvas-hint">
+            click <kbd>+ card</kbd> to add your first node
+          </div>
         )}
       </div>
     </div>

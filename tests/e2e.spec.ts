@@ -108,6 +108,63 @@ test('create a canvas and connect two cards on it', async () => {
   expect((final as any).canvases[0].edges).toHaveLength(2);
 });
 
+test('dragging from a port to empty canvas spawns a new connected card', async () => {
+  await page.getByTestId('create-first-canvas').click();
+  await page.getByTestId('add-card').click();
+  const firstCardId = await page
+    .locator('[data-card-id]')
+    .first()
+    .getAttribute('data-card-id');
+  expect(firstCardId).toBeTruthy();
+
+  const port = page.getByTestId(`card-port-${firstCardId}`);
+  const portBox = await port.boundingBox();
+  const stageBox = await page.getByTestId('canvas-stage').boundingBox();
+  if (!portBox || !stageBox) throw new Error('missing geometry');
+
+  // Drop on empty space well to the right.
+  const dropX = stageBox.x + stageBox.width - 160;
+  const dropY = portBox.y + 40;
+
+  await page.mouse.move(portBox.x + portBox.width / 2, portBox.y + portBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dropX, dropY, { steps: 10 });
+  await page.mouse.up();
+
+  await expect(page.locator('[data-card-id]')).toHaveCount(2);
+  const state = await page.evaluate(() => window.__loopflow?.getState());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = state as any;
+  expect(s.canvases[0].cards).toHaveLength(2);
+  expect(s.canvases[0].edges).toHaveLength(1);
+  expect(s.canvases[0].edges[0].from).toBe(firstCardId);
+});
+
+test('card positions snap to the 24px grid while dragging', async () => {
+  await page.getByTestId('create-first-canvas').click();
+  await page.getByTestId('add-card').click();
+  const cardId = await page
+    .locator('[data-card-id]')
+    .first()
+    .getAttribute('data-card-id');
+
+  const card = page.locator(`[data-card-id="${cardId}"]`);
+  const box = await card.boundingBox();
+  if (!box) throw new Error('no card geometry');
+
+  // Drag by a non-grid-aligned amount. The stored position must still be on 24px steps.
+  await page.mouse.move(box.x + 30, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 30 + 157, box.y + 30 + 71, { steps: 10 });
+  await page.mouse.up();
+
+  const state = await page.evaluate(() => window.__loopflow?.getState());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const persisted = (state as any).canvases[0].cards[0];
+  expect(persisted.x % 24).toBe(0);
+  expect(persisted.y % 24).toBe(0);
+});
+
 test('create two distinct datamodels', async () => {
   await page.getByTestId('nav-datastore').click();
 

@@ -336,6 +336,15 @@ select {
   pointer-events: none;
 }
 
+.ghost-card {
+  fill: var(--accent);
+  pointer-events: none;
+}
+
+.canvas-stage.is-connecting {
+  cursor: crosshair;
+}
+
 .card {
   position: absolute;
   top: 0;
