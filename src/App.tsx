@@ -12,6 +12,7 @@ import { Titlebar } from './components/Titlebar';
 import { Inspector } from './components/Inspector';
 import { CanvasView } from './views/CanvasView';
 import { DatastoreView } from './views/DatastoreView';
+import { seedLast30DaysExample } from './lib/examples';
 
 declare global {
   interface Window {
@@ -20,6 +21,7 @@ declare global {
       getState: () => unknown;
       runFromCard: (canvasId: string, cardId: string) => Promise<void>;
       tick: (now?: number) => Promise<void>;
+      seedExample: (name?: 'last30days') => void;
     };
   }
 }
@@ -42,6 +44,12 @@ export function App() {
       getState: () => JSON.parse(localStorage.getItem('loopflow:state:v1') ?? 'null'),
       runFromCard: (canvasId, cardId) => runFromCard(canvasId, cardId),
       tick: (now) => tick(now),
+      seedExample: (name = 'last30days') => {
+        _resetForTests();
+        _resetSchedulerState();
+        actions.ensureSystemModels();
+        if (name === 'last30days') seedLast30DaysExample();
+      },
     };
     return () => stopScheduler();
   }, []);
