@@ -93,6 +93,7 @@ export function useStorageSync() {
 const id = () => Math.random().toString(36).slice(2, 10);
 
 const RUNS_SCHEMA: Field[] = [
+  { id: 'flowId', name: 'flowId', type: 'string' },
   { id: 'cardId', name: 'cardId', type: 'string' },
   { id: 'actionType', name: 'actionType', type: 'string' },
   { id: 'startedAt', name: 'startedAt', type: 'string' },
@@ -104,15 +105,27 @@ const RUNS_SCHEMA: Field[] = [
 
 function ensureRunsModel(s: AppState): AppState {
   const existing = s.datamodels.find((m) => m.isSystem && m.name === RUNS_MODEL_NAME);
-  if (existing) return s;
-  const runsModel: Datamodel = {
-    id: id(),
-    name: RUNS_MODEL_NAME,
-    fields: RUNS_SCHEMA,
-    rows: [],
-    isSystem: true,
+  if (!existing) {
+    const runsModel: Datamodel = {
+      id: id(),
+      name: RUNS_MODEL_NAME,
+      fields: RUNS_SCHEMA,
+      rows: [],
+      isSystem: true,
+    };
+    return { ...s, datamodels: [...s.datamodels, runsModel] };
+  }
+  // Forward-migrate: if the stored runs model is missing any schema field
+  // (flowId was added after initial release), append it so existing state
+  // files keep working without a manual reset.
+  const missing = RUNS_SCHEMA.filter((f) => !existing.fields.some((x) => x.name === f.name));
+  if (missing.length === 0) return s;
+  return {
+    ...s,
+    datamodels: s.datamodels.map((m) =>
+      m === existing ? { ...m, fields: [...m.fields, ...missing] } : m,
+    ),
   };
-  return { ...s, datamodels: [...s.datamodels, runsModel] };
 }
 
 export const actions = {

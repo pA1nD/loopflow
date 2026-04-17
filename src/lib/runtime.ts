@@ -15,6 +15,7 @@ async function runSingle(
   canvasId: string,
   card: Card,
   upstreamOutput: unknown,
+  flowId: string,
 ): Promise<RunResult> {
   const action = getAction(card.kind);
   if (!action?.run) {
@@ -54,6 +55,7 @@ async function runSingle(
   );
   if (runsModel) {
     storeActions.appendRowByFieldName(runsModel.id, {
+      flowId,
       cardId: card.id,
       actionType: card.kind,
       startedAt: new Date(startedAt).toISOString(),
@@ -78,17 +80,24 @@ function safeStringify(v: unknown): string {
 // Depth-first propagation along `edges`. Branches are run serially —
 // concurrency can come later; the graph model needs it to be deterministic
 // for now so the e2e suite can assert on final state.
+// Each invocation (user clicks "run now" or the scheduler fires a trigger)
+// starts a new flow with a shared id. Every node run performed as part of
+// that walk stamps this id onto its row — the UI groups by flowId to
+// display a collapsible "flow" row with its constituent steps.
+const newFlowId = () => Math.random().toString(36).slice(2, 10);
+
 export async function runFromCard(canvasId: string, cardId: string): Promise<void> {
   const canvas = getState().canvases.find((c) => c.id === canvasId);
   if (!canvas) return;
   const card = canvas.cards.find((c) => c.id === cardId);
   if (!card) return;
-  await walk(canvas, card, null);
+  const flowId = newFlowId();
+  await walk(canvas, card, null, flowId);
 }
 
-async function walk(canvas: Canvas, card: Card, input: unknown): Promise<void> {
-  const result = await runSingle(canvas.id, card, input);
-  if (result.status === 'error') return; // stop this branch on error
+async function walk(canvas: Canvas, card: Card, input: unknown, flowId: string): Promise<void> {
+  const result = await runSingle(canvas.id, card, input, flowId);
+  if (result.status === 'error') return;
   // Re-read canvas state in case the node mutated it (e.g. LLM action
   // auto-creating a datamodel + updating its own datamodelId param).
   const fresh = getState().canvases.find((c) => c.id === canvas.id);
@@ -97,7 +106,7 @@ async function walk(canvas: Canvas, card: Card, input: unknown): Promise<void> {
   for (const edge of outgoing) {
     const next = fresh.cards.find((c) => c.id === edge.to);
     if (!next) continue;
-    await walk(fresh, next, result.output);
+    await walk(fresh, next, result.output, flowId);
   }
 }
 

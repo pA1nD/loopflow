@@ -85,6 +85,7 @@ const state = {
       name: 'runs',
       isSystem: true,
       fields: [
+        { id: 'flowId', name: 'flowId', type: 'string' },
         { id: fieldIds.cardId, name: 'cardId', type: 'string' },
         { id: fieldIds.actionType, name: 'actionType', type: 'string' },
         { id: fieldIds.startedAt, name: 'startedAt', type: 'string' },
