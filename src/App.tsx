@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { actions, useAppState, useStorageSync, _resetForTests } from './lib/store';
+import {
+  actions,
+  getState,
+  useAppState,
+  useStorageSync,
+  _resetForTests,
+} from './lib/store';
 import {
   runFromCard,
   tick,
@@ -41,7 +47,7 @@ export function App() {
         _resetSchedulerState();
         actions.ensureSystemModels();
       },
-      getState: () => JSON.parse(localStorage.getItem('loopflow:state:v1') ?? 'null'),
+      getState: () => getState(),
       runFromCard: (canvasId, cardId) => runFromCard(canvasId, cardId),
       tick: (now) => tick(now),
       seedExample: (name = 'last30days') => {

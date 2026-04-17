@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import type {
   AppState,
   Canvas,
@@ -9,8 +9,6 @@ import type {
   FieldType,
 } from './types';
 import { inferFieldsFromRows } from './actions';
-
-const STORAGE_KEY = 'loopflow:state:v1';
 
 export const RUNS_MODEL_NAME = 'runs';
 
@@ -25,31 +23,44 @@ function emptyState(): AppState {
   };
 }
 
+// Preload reads the JSON file synchronously before the renderer boots and
+// hands it to us here. If the bridge isn't present (e.g. running React in a
+// non-Electron browser for some reason), fall back to an empty state.
 function load(): AppState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyState();
-    const parsed = JSON.parse(raw) as Partial<AppState>;
-    return { ...emptyState(), ...parsed };
-  } catch {
-    return emptyState();
-  }
+  const bridge = typeof window !== 'undefined' ? window.loopflow : undefined;
+  const seeded = bridge?.storage?.initialState as Partial<AppState> | null | undefined;
+  if (seeded && typeof seeded === 'object') return { ...emptyState(), ...seeded };
+  return emptyState();
 }
 
 let state: AppState = load();
 const listeners = new Set<() => void>();
+let writePromise: Promise<unknown> = Promise.resolve();
+let pendingWrite: AppState | null = null;
 
 function notify() {
   for (const l of listeners) l();
 }
 
+function persist(next: AppState) {
+  const write = typeof window !== 'undefined' ? window.loopflow?.storage?.write : undefined;
+  if (!write) return;
+  // Simple serializer: chain the next write onto the previous one so order
+  // is preserved. Only the most-recent pending state is sent.
+  pendingWrite = next;
+  writePromise = writePromise
+    .catch(() => undefined)
+    .then(() => {
+      const snapshot = pendingWrite;
+      pendingWrite = null;
+      if (!snapshot) return;
+      return write(snapshot);
+    });
+}
+
 function commit(next: AppState) {
   state = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    /* ignore quota */
-  }
+  persist(next);
   notify();
 }
 
@@ -70,17 +81,10 @@ export function getState(): AppState {
   return state;
 }
 
+// No-op: file-backed storage doesn't need cross-window sync. Kept to keep
+// the App.tsx import stable while we migrate.
 export function useStorageSync() {
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        state = load();
-        notify();
-      }
-    };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, []);
+  /* intentionally empty */
 }
 
 // ---------- mutations ----------
@@ -392,11 +396,7 @@ export const actions = {
 
 // Test helper — wipes persisted state. Used by e2e harness via window.__loopflow.
 export function _resetForTests() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
   state = emptyState();
+  persist(state);
   notify();
 }

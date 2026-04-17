@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import { writeFile, rename, mkdir } from 'node:fs/promises';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,7 +12,31 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 const HEADLESS = process.env.LOOPFLOW_HEADLESS === '1';
 
+// JSON-on-disk state. One line to pass to the preload (so it can sync-read
+// it before the renderer boots), one ipcMain handler for writes.
+// LOOPFLOW_STATE_FILE is honored as an override (tests point at a temp
+// file so they don't clobber the user's real state).
+const DEFAULT_STATE_DIR = path.join(os.homedir(), '.loopflow');
+const STATE_FILE =
+  process.env.LOOPFLOW_STATE_FILE || path.join(DEFAULT_STATE_DIR, 'state.json');
+try {
+  mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+} catch {
+  /* ignore */
+}
+
+ipcMain.handle('storage:write', async (_event, payload: unknown) => {
+  await mkdir(path.dirname(STATE_FILE), { recursive: true });
+  const tmp = `${STATE_FILE}.${process.pid}.tmp`;
+  await writeFile(tmp, JSON.stringify(payload, null, 2));
+  await rename(tmp, STATE_FILE); // atomic replace
+  return { ok: true };
+});
+
 function createWindow() {
+  // Expose the state path + headless flag to the preload via process env
+  // so preload can sync-read the file before the renderer starts.
+  process.env.LOOPFLOW_STATE_FILE = STATE_FILE;
   const win = new BrowserWindow({
     width: 1280,
     height: 820,

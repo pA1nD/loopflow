@@ -73,7 +73,11 @@ declare global {
   interface Window {
     loopflow?: {
       llm?: (req: LlmRequest) => Promise<LlmResponse>;
-      env?: { headless?: boolean };
+      env?: { headless?: boolean; statePath?: string };
+      storage?: {
+        initialState?: unknown;
+        write?: (data: unknown) => Promise<unknown>;
+      };
     };
   }
 }

@@ -1,44 +1,117 @@
-// One-shot seeder: launches Electron headlessly, resets the persisted
-// state, builds the last30days example via window.__loopflow.seedExample,
-// then exits. The next time `npm run dev` starts, the app loads the
-// seeded state from localStorage.
+// Seed ~/.loopflow/state.json with the last30days research loop example.
+// No Electron needed — state is a plain JSON file that the app reads on
+// startup via the preload. Run anytime:
 //
-// Usage:  node scripts/seed.mjs
+//   node scripts/seed.mjs
+//
+// You can also open ~/.loopflow/state.json in any editor to tweak the
+// setup by hand.
 
-import { _electron as electron } from 'playwright';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '..');
+const stateDir = path.join(os.homedir(), '.loopflow');
+const stateFile = path.join(stateDir, 'state.json');
+fs.mkdirSync(stateDir, { recursive: true });
 
-const app = await electron.launch({
-  args: [repoRoot],
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    LOOPFLOW_HEADLESS: '1',
-  },
-});
+const id = () => Math.random().toString(36).slice(2, 10);
 
-const page = await app.firstWindow();
-await page.waitForSelector('[data-testid="titlebar"]');
-await page.evaluate(() => window.__loopflow?.seedExample?.('last30days'));
-// Give the renderer a tick to commit localStorage.
-await page.waitForTimeout(500);
+const triggerId = id();
+const llmId = id();
+const canvasId = id();
+const findingsId = id();
+const runsId = id();
 
-const summary = await page.evaluate(() => {
-  const raw = localStorage.getItem('loopflow:state:v1');
-  if (!raw) return null;
-  const s = JSON.parse(raw);
-  return {
-    canvases: s.canvases?.length ?? 0,
-    firstCanvas: s.canvases?.[0]?.name,
-    cards: s.canvases?.[0]?.cards?.length ?? 0,
-    edges: s.canvases?.[0]?.edges?.length ?? 0,
-    datamodels: s.datamodels?.map((m) => m.name) ?? [],
-  };
-});
+const fieldIds = {
+  topic: id(),
+  finding: id(),
+  source: id(),
+  score: id(),
+  // runs schema
+  cardId: 'cardId',
+  actionType: 'actionType',
+  startedAt: 'startedAt',
+  durationMs: 'durationMs',
+  status: 'status',
+  output: 'output',
+  error: 'error',
+};
 
-console.log('seeded:', JSON.stringify(summary, null, 2));
-await app.close();
+const state = {
+  view: 'canvas',
+  activeCanvasId: canvasId,
+  activeDatamodelId: null,
+  selectedCardId: llmId,
+  canvases: [
+    {
+      id: canvasId,
+      name: 'research loop',
+      cards: [
+        {
+          id: triggerId,
+          kind: 'interval-trigger',
+          title: 'every hour',
+          body: '',
+          x: 120,
+          y: 200,
+          params: { intervalSeconds: 3600, enabled: false },
+        },
+        {
+          id: llmId,
+          kind: 'llm',
+          title: 'last 30 days',
+          body: '',
+          x: 120 + 180 + 48,
+          y: 200,
+          params: {
+            prompt:
+              'Research "react 19" and list the 3-5 most notable findings from the last 30 days. ' +
+              'For each item, include a clear title in `finding`, the original `source` (reddit / x / hn / blog / web), ' +
+              'and a relevance `score` between 0 and 1. Always set `topic` to "react 19".',
+            skill: 'last30days',
+            envVars: '',
+            datamodelId: findingsId,
+            datamodelName: 'findings',
+          },
+        },
+      ],
+      edges: [{ id: id(), from: triggerId, to: llmId }],
+    },
+  ],
+  datamodels: [
+    {
+      id: runsId,
+      name: 'runs',
+      isSystem: true,
+      fields: [
+        { id: fieldIds.cardId, name: 'cardId', type: 'string' },
+        { id: fieldIds.actionType, name: 'actionType', type: 'string' },
+        { id: fieldIds.startedAt, name: 'startedAt', type: 'string' },
+        { id: fieldIds.durationMs, name: 'durationMs', type: 'number' },
+        { id: fieldIds.status, name: 'status', type: 'string' },
+        { id: fieldIds.output, name: 'output', type: 'string' },
+        { id: fieldIds.error, name: 'error', type: 'string' },
+      ],
+      rows: [],
+    },
+    {
+      id: findingsId,
+      name: 'findings',
+      fields: [
+        { id: fieldIds.topic, name: 'topic', type: 'string' },
+        { id: fieldIds.finding, name: 'finding', type: 'string' },
+        { id: fieldIds.source, name: 'source', type: 'string' },
+        { id: fieldIds.score, name: 'score', type: 'number' },
+      ],
+      rows: [],
+    },
+  ],
+};
+
+fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+console.log('wrote', stateFile);
+console.log(
+  `  canvas "research loop" with ${state.canvases[0].cards.length} cards, ${state.canvases[0].edges.length} edge`,
+);
+console.log(`  datamodels: ${state.datamodels.map((m) => m.name).join(', ')}`);

@@ -1,5 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -8,13 +10,22 @@ const repoRoot = path.resolve(__dirname, '..');
 let app: ElectronApplication;
 let page: Page;
 
+let tempStatePath: string;
+
 test.beforeEach(async () => {
+  // Each test gets its own state file so the suite never touches the
+  // user's real ~/.loopflow/state.json.
+  tempStatePath = path.join(
+    os.tmpdir(),
+    `loopflow-test-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+  );
   app = await electron.launch({
     args: [repoRoot],
     cwd: repoRoot,
     env: {
       ...process.env,
       LOOPFLOW_HEADLESS: '1',
+      LOOPFLOW_STATE_FILE: tempStatePath,
     },
   });
   // Surface main-process logs (claude subprocess errors land here).
@@ -35,6 +46,11 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   await app.close();
+  try {
+    fs.unlinkSync(tempStatePath);
+  } catch {
+    /* already gone */
+  }
 });
 
 test('create a canvas and connect two cards on it', async () => {
